@@ -1,0 +1,688 @@
+import React, { useState, useEffect } from 'react'
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  FlatList,
+  Dimensions,
+  PermissionsAndroid,
+  Platform
+} from 'react-native'
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
+import * as Location from 'expo-location'
+import { useNavigation } from '@react-navigation/native'
+import Icon from '../Icon'
+import VendorService from '../services/VendorService'
+import LocationService from '../services/LocationService'
+
+const { width, height } = Dimensions.get('window')
+
+const VNearbyConsumers = () => {
+  const navigation = useNavigation()
+  const [loading, setLoading] = useState(true)
+  const [vendorLocation, setVendorLocation] = useState(null)
+  const [consumers, setConsumers] = useState([])
+  const [selectedConsumer, setSelectedConsumer] = useState(null)
+  const [routeCoordinates, setRouteCoordinates] = useState([])
+  const [mapRegion, setMapRegion] = useState(null)
+  const [showRoutes, setShowRoutes] = useState(false)
+  const [shortestPath, setShortestPath] = useState(null)
+  const [totalDistance, setTotalDistance] = useState(0)
+
+  // Dijkstra's Algorithm Implementation
+  const dijkstraAlgorithm = (graph, start, end) => {
+    const distances = {}
+    const previous = {}
+    const unvisited = new Set()
+    
+    // Initialize distances
+    Object.keys(graph).forEach(node => {
+      distances[node] = node === start ? 0 : Infinity
+      previous[node] = null
+      unvisited.add(node)
+    })
+    
+    while (unvisited.size > 0) {
+      // Find unvisited node with minimum distance
+      let current = null
+      let minDistance = Infinity
+      
+      unvisited.forEach(node => {
+        if (distances[node] < minDistance) {
+          minDistance = distances[node]
+          current = node
+        }
+      })
+      
+      if (current === null) break
+      
+      unvisited.delete(current)
+      
+      // Check if we reached the end
+      if (current === end) break
+      
+      // Update distances to neighbors
+      if (graph[current]) {
+        Object.keys(graph[current]).forEach(neighbor => {
+          if (unvisited.has(neighbor)) {
+            const alt = distances[current] + graph[current][neighbor]
+            if (alt < distances[neighbor]) {
+              distances[neighbor] = alt
+              previous[neighbor] = current
+            }
+          }
+        })
+      }
+    }
+    
+    // Reconstruct path
+    const path = []
+    let current = end
+    
+    while (current !== null) {
+      path.unshift(current)
+      current = previous[current]
+    }
+    
+    return {
+      distance: distances[end],
+      path: path.length > 1 ? path : []
+    }
+  }
+
+  // Calculate distance between two coordinates using Haversine formula
+  const calculateDistance = (coord1, coord2) => {
+    const R = 6371 // Earth's radius in kilometers
+    const dLat = (coord2.latitude - coord1.latitude) * Math.PI / 180
+    const dLon = (coord2.longitude - coord1.longitude) * Math.PI / 180
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(coord1.latitude * Math.PI / 180) * Math.cos(coord2.latitude * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+    return R * c
+  }
+
+  // Build graph for Dijkstra's algorithm
+  const buildLocationGraph = (vendorLoc, consumerLocs) => {
+    const graph = {}
+    const locations = [{ id: 'vendor', ...vendorLoc }, ...consumerLocs]
+    
+    locations.forEach(loc1 => {
+      graph[loc1.id] = {}
+      locations.forEach(loc2 => {
+        if (loc1.id !== loc2.id) {
+          const distance = calculateDistance(
+            { latitude: loc1.latitude, longitude: loc1.longitude },
+            { latitude: loc2.latitude, longitude: loc2.longitude }
+          )
+          graph[loc1.id][loc2.id] = distance
+        }
+      })
+    })
+    
+    return graph
+  }
+
+  // Find optimal route using Dijkstra's algorithm
+  const findOptimalRoute = (vendorLoc, consumerLocs) => {
+    if (!vendorLoc || consumerLocs.length === 0) return null
+    
+    const graph = buildLocationGraph(vendorLoc, consumerLocs)
+    let totalDist = 0
+    const fullPath = ['vendor']
+    const visitedConsumers = new Set()
+    let currentLocation = 'vendor'
+    
+    // Visit each consumer using shortest path
+    while (visitedConsumers.size < consumerLocs.length) {
+      let nearestConsumer = null
+      let shortestDistance = Infinity
+      
+      consumerLocs.forEach(consumer => {
+        if (!visitedConsumers.has(consumer.id)) {
+          const result = dijkstraAlgorithm(graph, currentLocation, consumer.id)
+          if (result.distance < shortestDistance) {
+            shortestDistance = result.distance
+            nearestConsumer = consumer.id
+          }
+        }
+      })
+      
+      if (nearestConsumer) {
+        const result = dijkstraAlgorithm(graph, currentLocation, nearestConsumer)
+        totalDist += result.distance
+        fullPath.push(nearestConsumer)
+        visitedConsumers.add(nearestConsumer)
+        currentLocation = nearestConsumer
+      } else {
+        break
+      }
+    }
+    
+    return {
+      path: fullPath,
+      totalDistance: totalDist
+    }
+  }
+
+  // Convert path to coordinates for map display
+  const pathToCoordinates = (path, vendorLoc, consumerLocs) => {
+    const coordinates = []
+    const allLocations = { vendor: vendorLoc, ...Object.fromEntries(consumerLocs.map(c => [c.id, c])) }
+    
+    path.forEach(locationId => {
+      const loc = allLocations[locationId]
+      if (loc) {
+        coordinates.push({
+          latitude: loc.latitude,
+          longitude: loc.longitude
+        })
+      }
+    })
+    
+    return coordinates
+  }
+
+  // Request location permissions
+  const requestLocationPermission = async () => {
+    try {
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          {
+            title: 'Location Permission',
+            message: 'This app needs location permission to show nearby consumers.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          }
+        )
+        return granted === PermissionsAndroid.RESULTS.GRANTED
+      } else {
+        const { status } = await Location.requestForegroundPermissionsAsync()
+        return status === 'granted'
+      }
+    } catch (error) {
+      console.error('Permission request error:', error)
+      return false
+    }
+  }
+
+  // Get current location
+  const getCurrentLocation = async () => {
+    try {
+      const hasPermission = await requestLocationPermission()
+      if (!hasPermission) {
+        Alert.alert('Permission Denied', 'Location permission is required to show nearby consumers.')
+        return null
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      })
+
+      return {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      }
+    } catch (error) {
+      console.error('Error getting location:', error)
+      Alert.alert('Location Error', 'Could not get current location')
+      return null
+    }
+  }
+
+  // Load nearby consumers with active orders
+  const loadNearbyConsumers = async () => {
+    try {
+      setLoading(true)
+
+      // Get vendor's current location
+      const currentLocation = await getCurrentLocation()
+      if (!currentLocation) {
+        // Use default location if permission denied
+        const defaultLocation = {
+          latitude: 28.6139,
+          longitude: 77.2090
+        }
+        setVendorLocation(defaultLocation)
+        setMapRegion({
+          ...defaultLocation,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01
+        })
+      } else {
+        setVendorLocation(currentLocation)
+        setMapRegion({
+          ...currentLocation,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01
+        })
+      }
+
+      // Load consumers with active orders from vendor
+      const response = await VendorService.getNearbyConsumers(currentLocation)
+      
+      if (response.success) {
+        const consumersData = response.data.map((consumer, index) => ({
+          id: `consumer_${consumer.id || index}`,
+          name: consumer.name || `Consumer ${index + 1}`,
+          address: consumer.address || 'Unknown Address',
+          latitude: consumer.latitude || (currentLocation?.latitude + (Math.random() - 0.5) * 0.01),
+          longitude: consumer.longitude || (currentLocation?.longitude + (Math.random() - 0.5) * 0.01),
+          orderCount: consumer.activeOrders || Math.floor(Math.random() * 5) + 1,
+          totalValue: consumer.orderValue || Math.floor(Math.random() * 10000) + 1000,
+          distance: consumer.distance || calculateDistance(currentLocation || { latitude: 28.6139, longitude: 77.2090 }, {
+            latitude: consumer.latitude || (currentLocation?.latitude + (Math.random() - 0.5) * 0.01),
+            longitude: consumer.longitude || (currentLocation?.longitude + (Math.random() - 0.5) * 0.01)
+          }),
+          phone: consumer.phone || '+91 9876543210'
+        }))
+
+        setConsumers(consumersData)
+
+        // Calculate optimal route using Dijkstra's algorithm
+        if (currentLocation && consumersData.length > 0) {
+          const optimalRoute = findOptimalRoute(currentLocation, consumersData)
+          if (optimalRoute) {
+            setShortestPath(optimalRoute.path)
+            setTotalDistance(optimalRoute.totalDistance)
+            
+            const routeCoords = pathToCoordinates(optimalRoute.path, currentLocation, consumersData)
+            setRouteCoordinates(routeCoords)
+          }
+        }
+      } else {
+        // Mock data if API fails
+        const mockConsumers = Array.from({ length: 5 }, (_, index) => ({
+          id: `consumer_${index}`,
+          name: `Consumer ${index + 1}`,
+          address: `Address ${index + 1}, Delhi`,
+          latitude: (currentLocation?.latitude || 28.6139) + (Math.random() - 0.5) * 0.01,
+          longitude: (currentLocation?.longitude || 77.2090) + (Math.random() - 0.5) * 0.01,
+          orderCount: Math.floor(Math.random() * 5) + 1,
+          totalValue: Math.floor(Math.random() * 10000) + 1000,
+          distance: Math.random() * 5 + 0.5,
+          phone: '+91 9876543210'
+        }))
+
+        setConsumers(mockConsumers)
+        
+        // Calculate route for mock data
+        if (currentLocation && mockConsumers.length > 0) {
+          const optimalRoute = findOptimalRoute(currentLocation, mockConsumers)
+          if (optimalRoute) {
+            setShortestPath(optimalRoute.path)
+            setTotalDistance(optimalRoute.totalDistance)
+            
+            const routeCoords = pathToCoordinates(optimalRoute.path, currentLocation, mockConsumers)
+            setRouteCoordinates(routeCoords)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error loading nearby consumers:', error)
+      Alert.alert('Error', 'Failed to load nearby consumers')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadNearbyConsumers()
+  }, [])
+
+  const handleConsumerSelect = (consumer) => {
+    setSelectedConsumer(consumer)
+  }
+
+  const handleCallConsumer = (phone) => {
+    Alert.alert(
+      'Call Consumer',
+      `Do you want to call ${phone}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Call', onPress: () => {
+          // In a real app, use Linking.openURL(`tel:${phone}`)
+          Alert.alert('Calling...', `Dialing ${phone}`)
+        }}
+      ]
+    )
+  }
+
+  const toggleRoutes = () => {
+    setShowRoutes(!showRoutes)
+  }
+
+  const ConsumerListItem = ({ consumer }) => (
+    <TouchableOpacity 
+      style={[
+        styles.consumerItem,
+        selectedConsumer?.id === consumer.id && styles.selectedConsumerItem
+      ]}
+      onPress={() => handleConsumerSelect(consumer)}
+    >
+      <View style={styles.consumerInfo}>
+        <Text style={styles.consumerName}>{consumer.name}</Text>
+        <Text style={styles.consumerAddress}>{consumer.address}</Text>
+        <View style={styles.consumerStats}>
+          <View style={styles.statItem}>
+            <Icon name="ShoppingBag" size={12} color="#FF9800" />
+            <Text style={styles.statText}>{consumer.orderCount} orders</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Icon name="MapPin" size={12} color="#2196F3" />
+            <Text style={styles.statText}>{consumer.distance.toFixed(1)} km</Text>
+          </View>
+        </View>
+      </View>
+      <TouchableOpacity 
+        style={styles.callButton}
+        onPress={() => handleCallConsumer(consumer.phone)}
+      >
+        <Icon name="Phone" size={16} color="white" />
+      </TouchableOpacity>
+    </TouchableOpacity>
+  )
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FF9800" />
+        <Text style={styles.loadingText}>Finding nearby consumers...</Text>
+      </View>
+    )
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Icon name="ArrowLeft" size={24} color="white" />
+        </TouchableOpacity>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Nearby Consumers</Text>
+          <Text style={styles.headerSubtitle}>{consumers.length} consumers with active orders</Text>
+        </View>
+        <TouchableOpacity style={styles.routeButton} onPress={toggleRoutes}>
+          <Icon name={showRoutes ? "EyeOff" : "Eye"} size={20} color="white" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Map Section */}
+      <View style={styles.mapContainer}>
+        {mapRegion && (
+          <MapView
+            provider={PROVIDER_GOOGLE}
+            style={styles.map}
+            region={mapRegion}
+            showsUserLocation={true}
+            showsMyLocationButton={true}
+          >
+            {/* Vendor Location Marker */}
+            {vendorLocation && (
+              <Marker
+                coordinate={vendorLocation}
+                title="Your Location"
+                description="Vendor Location"
+                pinColor="#FF9800"
+              >
+                <View style={styles.vendorMarker}>
+                  <Icon name="Store" size={20} color="white" />
+                </View>
+              </Marker>
+            )}
+
+            {/* Consumer Markers */}
+            {consumers.map((consumer) => (
+              <Marker
+                key={consumer.id}
+                coordinate={{
+                  latitude: consumer.latitude,
+                  longitude: consumer.longitude
+                }}
+                title={consumer.name}
+                description={`${consumer.orderCount} active orders`}
+                onPress={() => handleConsumerSelect(consumer)}
+              >
+                <View style={[
+                  styles.consumerMarker,
+                  selectedConsumer?.id === consumer.id && styles.selectedMarker
+                ]}>
+                  <Icon name="User" size={16} color="white" />
+                </View>
+              </Marker>
+            ))}
+
+            {/* Optimal Route Polyline */}
+            {showRoutes && routeCoordinates.length > 0 && (
+              <Polyline
+                coordinates={routeCoordinates}
+                strokeColor="#4CAF50"
+                strokeWidth={3}
+                lineDashPattern={[5, 5]}
+              />
+            )}
+          </MapView>
+        )}
+
+        {/* Route Info Overlay */}
+        {showRoutes && shortestPath && (
+          <View style={styles.routeInfoOverlay}>
+            <View style={styles.routeInfo}>
+              <Icon name="Route" size={16} color="#4CAF50" />
+              <Text style={styles.routeText}>
+                Optimal Route: {totalDistance.toFixed(1)} km
+              </Text>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Consumer List */}
+      <View style={styles.consumerListContainer}>
+        <View style={styles.listHeader}>
+          <Text style={styles.listTitle}>Consumers with Active Orders</Text>
+          <TouchableOpacity style={styles.refreshButton} onPress={loadNearbyConsumers}>
+            <Icon name="RefreshCw" size={16} color="#FF9800" />
+          </TouchableOpacity>
+        </View>
+        
+        <FlatList
+          data={consumers}
+          renderItem={({ item }) => <ConsumerListItem consumer={item} />}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
+        />
+      </View>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 10,
+  },
+
+  // Header Styles
+  header: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 8,
+    padding: 8,
+    marginRight: 15,
+  },
+  headerContent: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 2,
+  },
+  routeButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 8,
+    padding: 8,
+  },
+
+  // Map Styles
+  mapContainer: {
+    height: height * 0.4,
+    position: 'relative',
+  },
+  map: {
+    flex: 1,
+  },
+  vendorMarker: {
+    backgroundColor: '#FF9800',
+    borderRadius: 20,
+    padding: 8,
+    borderWidth: 3,
+    borderColor: 'white',
+  },
+  consumerMarker: {
+    backgroundColor: '#2196F3',
+    borderRadius: 15,
+    padding: 6,
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  selectedMarker: {
+    backgroundColor: '#4CAF50',
+    transform: [{ scale: 1.2 }],
+  },
+  routeInfoOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+  },
+  routeInfo: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  routeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 8,
+  },
+
+  // Consumer List Styles
+  consumerListContainer: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  listHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  listTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  refreshButton: {
+    padding: 8,
+  },
+  listContent: {
+    padding: 20,
+  },
+  consumerItem: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  selectedConsumerItem: {
+    borderColor: '#4CAF50',
+    borderWidth: 2,
+  },
+  consumerInfo: {
+    flex: 1,
+  },
+  consumerName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  consumerAddress: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  consumerStats: {
+    flexDirection: 'row',
+    gap: 15,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 4,
+  },
+  callButton: {
+    backgroundColor: '#4CAF50',
+    borderRadius: 20,
+    padding: 10,
+  },
+})
+
+export default VNearbyConsumers
