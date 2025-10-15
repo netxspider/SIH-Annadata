@@ -12,6 +12,10 @@ import AllOrders from '../farmer/AllOrders';
 import vDashboard from '../vendor/VDashboard';
 import VNearbyConsumers from '../vendor/VNearbyConsumers';
 import CProductDetail from '../consumer/CProductDetail';
+import CVendorMap from '../consumer/CVendorMap';
+import TermsAndConditions from '../pages/TermsAndConditions';
+import PrivacyPolicy from '../pages/PrivacyPolicy';
+import HelpCenter from '../pages/HelpCenter';
 import ScreenWrapper from '../components/ScreenWrapper';
 import Terms from '../pages/Terms';
 import Privacy from '../pages/Privacy';
@@ -30,8 +34,12 @@ const WrappedAllOrders = (props) => <ScreenWrapper><AllOrders {...props} /></Scr
 const WrappedVDashboard = (props) => <ScreenWrapper><vDashboard {...props} /></ScreenWrapper>;
 const WrappedVNearbyConsumers = (props) => <ScreenWrapper><VNearbyConsumers {...props} /></ScreenWrapper>;
 const WrappedCProductDetail = (props) => <ScreenWrapper><CProductDetail {...props} /></ScreenWrapper>;
+const WrappedCVendorMap = (props) => <ScreenWrapper><CVendorMap {...props} /></ScreenWrapper>;
 
 // Wrapped pages without ChatBot
+const WrappedTermsAndConditions = () => <ScreenWrapper showChatBot={false}><TermsAndConditions /></ScreenWrapper>;
+const WrappedPrivacyPolicy = () => <ScreenWrapper showChatBot={false}><PrivacyPolicy /></ScreenWrapper>;
+const WrappedHelpCenter = () => <ScreenWrapper showChatBot={false}><HelpCenter /></ScreenWrapper>;
 const WrappedTerms = () => <ScreenWrapper showChatBot={false}><Terms /></ScreenWrapper>;
 const WrappedPrivacy = () => <ScreenWrapper showChatBot={false}><Privacy /></ScreenWrapper>;
 const WrappedContact = () => <ScreenWrapper showChatBot={false}><Contact /></ScreenWrapper>;
@@ -45,6 +53,11 @@ const StackNavigation = () => {
           <Stack.Screen name="Auth" component={Authorisation} />
           <Stack.Screen name="ChatBot" component={ChatBot} />
           <Stack.Screen name="Drawer" component={DrawerNavigation} />
+          
+          {/* Info Pages */}
+          <Stack.Screen name="TermsAndConditions" component={WrappedTermsAndConditions} />
+          <Stack.Screen name="PrivacyPolicy" component={WrappedPrivacyPolicy} />
+          <Stack.Screen name="HelpCenter" component={WrappedHelpCenter} />
           <Stack.Screen name="Terms" component={WrappedTerms} />
           <Stack.Screen name="Privacy" component={WrappedPrivacy} />
           <Stack.Screen name="Contact" component={WrappedContact} />
@@ -64,6 +77,7 @@ const StackNavigation = () => {
 
         {/* Consumers */}
         <Stack.Screen name="CProductDetail" component={WrappedCProductDetail} />
+        <Stack.Screen name="CVendorMap" component={WrappedCVendorMap} />
         </Stack.Navigator>
     </NavigationContainer>
   )
