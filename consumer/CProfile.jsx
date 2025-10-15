@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { 
   View, 
   Text, 
@@ -9,10 +9,14 @@ import {
   Dimensions,
   Alert,
   Share,
-  Linking
+  Linking,
+  ActivityIndicator
 } from 'react-native'
-import { useNavigation } from '@react-navigation/native'
+import { useNavigation, useFocusEffect } from '@react-navigation/native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import Icon from '../Icon'
+import UserService from '../services/UserService'
+import OrderService from '../services/OrderService'
 
 const { width } = Dimensions.get('window')
 
@@ -67,62 +71,94 @@ const OptionItem = ({ icon, title, description, color, onPress, showBadge = fals
 
 const CProfile = () => {
   const navigation = useNavigation()
-  const [userStats] = useState({
-    totalOrders: 23,
-    favouriteVendors: 8,
-    totalSpent: 15750,
-    savedAmount: 2340
+  const [loading, setLoading] = useState(true)
+  const [userProfile, setUserProfile] = useState(null)
+  const [userStats, setUserStats] = useState({
+    totalOrders: 0,
+    favouriteVendors: 0,
+    totalSpent: 0,
+    savedAmount: 0
   })
 
-  // User profile data
-  const userProfile = {
-    photo: 'https://via.placeholder.com/120x120/2196F3/FFFFFF?text=PS',
-    fullName: 'Priya Sharma',
-    email: 'priya.sharma@email.com',
-    phone: '+91 98765 43210',
-    address: 'B-204, Green Valley Apartments, Punjabi Bagh, New Delhi - 110026'
+  // Load user data when screen focuses
+  useFocusEffect(
+    React.useCallback(() => {
+      loadUserData()
+    }, [])
+  )
+
+  const loadUserData = async () => {
+    try {
+      setLoading(true)
+      
+      // Fetch user profile
+      const userData = await UserService.getCurrentUser()
+      if (userData) {
+        setUserProfile({
+          photo: UserService.getAvatarUrl(userData.name),
+          fullName: userData.name || 'User',
+          email: userData.email || '',
+          phone: userData.phone || '',
+          address: userData.address || 'No address added',
+          role: userData.role || 'consumer'
+        })
+      }
+
+      // Fetch order stats
+      const orderStats = await OrderService.getOrderStats()
+      if (orderStats) {
+        setUserStats({
+          totalOrders: orderStats.totalOrders || 0,
+          favouriteVendors: 0, // Can be fetched from backend if available
+          totalSpent: orderStats.totalAmount || 0,
+          savedAmount: Math.floor((orderStats.totalAmount || 0) * 0.15) // Estimated 15% savings
+        })
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleEditProfile = () => {
-    Alert.alert('Edit Profile', 'Opening profile edit screen...')
+    navigation.navigate('CEditProfile')
   }
 
   const handleViewOrders = () => {
-    console.log('Navigate to Orders')
-    Alert.alert('My Orders', 'Opening orders history...')
+    navigation.navigate('COrders')
   }
 
   const handleNearbyVendors = () => {
-    console.log('Nearby Vendors')
-    Alert.alert('Nearby Vendors', 'Finding vendors near your location...')
+    navigation.navigate('CVendorMap')
   }
 
   const handleTermsAndConditions = () => {
-    Alert.alert('Terms and Conditions', 'Opening terms and conditions...')
+    navigation.navigate('TermsAndConditions')
   }
 
   const handlePrivacyPolicy = () => {
-    Alert.alert('Privacy Policy', 'Opening privacy policy...')
+    navigation.navigate('PrivacyPolicy')
   }
 
   const handleContactUs = async () => {
     try {
-      const supported = await Linking.canOpenURL('mailto:support@krishika.com')
+      const supported = await Linking.canOpenURL('mailto:support@annadata.com')
       if (supported) {
-        await Linking.openURL('mailto:support@krishika.com?subject=Support Request&body=Hi, I need help with...')
+        await Linking.openURL('mailto:support@annadata.com?subject=Support Request&body=Hi, I need help with...')
       } else {
-        Alert.alert('Contact Us', 'Email: support@krishika.com\nPhone: +91 1800-123-4567')
+        Alert.alert('Contact Us', 'Email: support@annadata.com\nPhone: +91 1800-123-4567')
       }
     } catch (error) {
-      Alert.alert('Contact Us', 'Email: support@krishika.com\nPhone: +91 1800-123-4567')
+      Alert.alert('Contact Us', 'Email: support@annadata.com\nPhone: +91 1800-123-4567')
     }
   }
 
   const handleShareApp = async () => {
     try {
       await Share.share({
-        message: 'Check out Krishika - Connect directly with farmers and get fresh produce at fair prices! Download now: https://krishimitra.app',
-        title: 'Share Krishika',
+        message: 'Check out Annadata - Connect directly with farmers and get fresh produce at fair prices! Download now: https://annadata.app',
+        title: 'Share Annadata',
       })
     } catch (error) {
       console.log('Error sharing:', error)
@@ -130,19 +166,19 @@ const CProfile = () => {
   }
 
   const handleNotificationSettings = () => {
-    Alert.alert('Notification Settings', 'Manage your notification preferences...')
+    navigation.navigate('NotificationSettings')
   }
 
   const handlePaymentMethods = () => {
-    Alert.alert('Payment Methods', 'Manage your saved payment methods...')
+    navigation.navigate('PaymentMethods')
   }
 
   const handleAddresses = () => {
-    Alert.alert('Saved Addresses', 'Manage your delivery addresses...')
+    navigation.navigate('SavedAddresses')
   }
 
   const handleHelpCenter = () => {
-    Alert.alert('Help Center', 'Opening help and FAQ section...')
+    navigation.navigate('HelpCenter')
   }
 
   const handleRateApp = () => {
@@ -155,8 +191,75 @@ const CProfile = () => {
       'Are you sure you want to logout?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Logout', style: 'destructive', onPress: () => navigation.navigate('Auth') }
+        { 
+          text: 'Logout', 
+          style: 'destructive', 
+          onPress: async () => {
+            try {
+              await AsyncStorage.removeItem('userToken')
+              await AsyncStorage.removeItem('userData')
+              await AsyncStorage.removeItem('userRole')
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Auth' }],
+              })
+            } catch (error) {
+              console.error('Error logging out:', error)
+              Alert.alert('Error', 'Failed to logout. Please try again.')
+            }
+          }
+        }
       ]
+    )
+  }
+
+  // Show loading spinner
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Icon name="ArrowLeft" size={24} color="white" />
+          </TouchableOpacity>
+          
+          <Text style={styles.headerTitle}>My Profile</Text>
+          
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2196F3" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </View>
+    )
+  }
+
+  if (!userProfile) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Icon name="ArrowLeft" size={24} color="white" />
+          </TouchableOpacity>
+          
+          <Text style={styles.headerTitle}>My Profile</Text>
+          
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <Icon name="AlertCircle" size={48} color="#F44336" />
+          <Text style={styles.errorText}>Failed to load profile</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadUserData}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     )
   }
 
@@ -192,7 +295,10 @@ const CProfile = () => {
         
         <View style={styles.profileInfo}>
           <Text style={styles.userName}>{userProfile.fullName}</Text>
-          <Text style={styles.userTitle}>Consumer Member</Text>
+          <Text style={styles.userTitle}>
+            {userProfile.role === 'consumer' ? 'Consumer Member' : 
+             userProfile.role === 'vendor' ? 'Vendor' : 'Farmer'}
+          </Text>
           <View style={styles.verifiedBadge}>
             <Icon name="CheckCircle" size={16} color="#4CAF50" />
             <Text style={styles.verifiedText}>Verified Account</Text>
@@ -379,7 +485,7 @@ const CProfile = () => {
 
       {/* App Info */}
       <View style={styles.appInfoSection}>
-        <Text style={styles.appVersion}>Krishika v2.1.0</Text>
+        <Text style={styles.appVersion}>Annadata v2.1.0</Text>
         <Text style={styles.appDescription}>
           Connecting farmers and consumers for a sustainable future
         </Text>
@@ -651,6 +757,38 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
     lineHeight: 18,
+  },
+
+  // Loading State
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 16,
+  },
+  errorText: {
+    fontSize: 18,
+    color: '#F44336',
+    marginTop: 16,
+    fontWeight: '600',
+  },
+  retryButton: {
+    backgroundColor: '#2196F3',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 })
 

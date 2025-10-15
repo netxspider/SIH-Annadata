@@ -20,6 +20,7 @@ const API_CONFIG = {
     REGISTER: '/auth/register',
     
     // Users
+    USERS: '/users',
     USERS_SEARCH: '/users/search/query',
     
     // Products
