@@ -11,6 +11,7 @@ import CropListings from '../farmer/CropListings';
 import AllOrders from '../farmer/AllOrders';
 import vDashboard from '../vendor/VDashboard';
 import VNearbyConsumers from '../vendor/VNearbyConsumers';
+import CProductDetail from '../consumer/CProductDetail';
 import ScreenWrapper from '../components/ScreenWrapper';
 import Terms from '../pages/Terms';
 import Privacy from '../pages/Privacy';
@@ -28,6 +29,7 @@ const WrappedCropListings = (props) => <ScreenWrapper><CropListings {...props} /
 const WrappedAllOrders = (props) => <ScreenWrapper><AllOrders {...props} /></ScreenWrapper>;
 const WrappedVDashboard = (props) => <ScreenWrapper><vDashboard {...props} /></ScreenWrapper>;
 const WrappedVNearbyConsumers = (props) => <ScreenWrapper><VNearbyConsumers {...props} /></ScreenWrapper>;
+const WrappedCProductDetail = (props) => <ScreenWrapper><CProductDetail {...props} /></ScreenWrapper>;
 
 // Wrapped pages without ChatBot
 const WrappedTerms = () => <ScreenWrapper showChatBot={false}><Terms /></ScreenWrapper>;
@@ -59,6 +61,9 @@ const StackNavigation = () => {
         {/* Vendors */}
         <Stack.Screen name="vDashboard" component={WrappedVDashboard} />
         <Stack.Screen name="VNearbyConsumers" component={WrappedVNearbyConsumers} />
+
+        {/* Consumers */}
+        <Stack.Screen name="CProductDetail" component={WrappedCProductDetail} />
         </Stack.Navigator>
     </NavigationContainer>
   )

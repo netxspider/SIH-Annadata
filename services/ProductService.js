@@ -115,6 +115,46 @@ class ProductService {
     }
   }
 
+  // Get all products from vendors (for consumers to browse)
+  async getVendorProducts() {
+    try {
+      const authHeader = await this.getAuthHeader();
+      
+      console.log('ProductService: Fetching products from vendors only');
+      
+      // Use the specific endpoint to get products from vendors only
+      const response = await apiRequest(`${API_CONFIG.ENDPOINTS.PRODUCTS}/by-role/vendor`, {
+        method: 'GET',
+        headers: authHeader
+      });
+
+      if (response.success && response.data) {
+        // Handle different possible response structures
+        const products = response.data.products || response.data || [];
+        console.log('ProductService: Fetched vendor products:', products.length);
+        
+        return {
+          success: true,
+          data: products,
+          message: 'Vendor products fetched successfully'
+        };
+      } else {
+        throw new Error(response.message || 'Failed to fetch vendor products');
+      }
+    } catch (error) {
+      console.error('Error fetching vendor products:', error);
+      
+      // Return mock data as fallback
+      const mockData = this.generateMockProductsWithVendorDetails();
+      return {
+        success: false,
+        data: mockData,
+        message: 'Using mock data - API unavailable',
+        isMock: true
+      };
+    }
+  }
+
   // Generate mock products with farmer details (populated sellerId)
   generateMockProductsWithFarmerDetails() {
     return [
@@ -143,136 +183,156 @@ class ProductService {
           address: 'Village Khairpur, Ludhiana, Punjab, India'
         },
         createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+      }
+    ];
+  }
+
+  // Generate mock products with vendor details (populated sellerId)
+  generateMockProductsWithVendorDetails() {
+    return [
+      {
+        _id: 'prod1',
+        name: 'Fresh Vegetables Pack',
+        description: 'Assorted fresh vegetables sourced from local farmers',
+        category: 'vegetables',
+        price: 150,
+        unit: 'pack',
+        availableQuantity: 50,
+        minimumOrderQuantity: 1,
+        quality: 'Fresh',
+        harvestDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        expiryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+        isActive: true,
+        sellerId: {
+          _id: 'vendor1',
+          name: 'Green Grocers',
+          role: 'vendor',
+          location: {
+            district: 'Mumbai',
+            state: 'Maharashtra'
+          },
+          address: 'Shop 12, Market Road, Mumbai, Maharashtra, India'
+        },
+        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
       },
       {
         _id: 'prod2',
-        name: 'Basmati Rice',
-        description: 'Aromatic long grain basmati rice, premium quality',
+        name: 'Organic Fruits Basket',
+        description: 'Premium quality organic fruits handpicked from certified farms',
+        category: 'fruits',
+        price: 280,
+        unit: 'basket',
+        availableQuantity: 30,
+        minimumOrderQuantity: 1,
+        quality: 'Organic',
+        harvestDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        isActive: true,
+        sellerId: {
+          _id: 'vendor2',
+          name: 'Fresh Mart',
+          role: 'vendor',
+          location: {
+            district: 'Bangalore',
+            state: 'Karnataka'
+          },
+          address: 'Plaza Complex, MG Road, Bangalore, Karnataka, India'
+        },
+        createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()
+      },
+      {
+        _id: 'prod3',
+        name: 'Rice & Grains Combo',
+        description: 'Best quality basmati rice and mixed grains combo pack',
         category: 'grains',
-        price: 45,
+        price: 220,
         unit: 'kg',
-        availableQuantity: 300,
-        minimumOrderQuantity: 5,
+        availableQuantity: 100,
+        minimumOrderQuantity: 2,
         quality: 'Premium',
         harvestDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
         expiryDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
         isActive: true,
         sellerId: {
-          _id: 'farmer2',
-          name: 'Suresh Patel',
-          role: 'farmer',
+          _id: 'vendor3',
+          name: 'Grain House',
+          role: 'vendor',
           location: {
-            village: 'Rohtak Village',
-            district: 'Rohtak',
-            state: 'Haryana'
+            district: 'Delhi',
+            state: 'Delhi'
           },
-          address: 'Village Rohtak, Rohtak, Haryana, India'
-        },
-        createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
-      },
-      {
-        _id: 'prod3',
-        name: 'Fresh Tomatoes',
-        description: 'Farm fresh organic tomatoes, rich in nutrients',
-        category: 'vegetables',
-        price: 25,
-        unit: 'kg',
-        availableQuantity: 150,
-        minimumOrderQuantity: 2,
-        quality: 'Organic',
-        harvestDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        isActive: true,
-        sellerId: {
-          _id: 'farmer3',
-          name: 'Priya Sharma',
-          role: 'farmer',
-          location: {
-            village: 'Nashik Village',
-            district: 'Nashik',
-            state: 'Maharashtra'
-          },
-          address: 'Village Nashik, Nashik, Maharashtra, India'
-        },
-        createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
-      },
-      {
-        _id: 'prod4',
-        name: 'Red Onions',
-        description: 'Fresh red onions, perfect for cooking',
-        category: 'vegetables',
-        price: 20,
-        unit: 'kg',
-        availableQuantity: 400,
-        minimumOrderQuantity: 5,
-        quality: 'Standard',
-        harvestDate: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
-        expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        isActive: true,
-        sellerId: {
-          _id: 'farmer4',
-          name: 'Vikram Singh',
-          role: 'farmer',
-          location: {
-            village: 'Jodhpur Village',
-            district: 'Jodhpur',
-            state: 'Rajasthan'
-          },
-          address: 'Village Jodhpur, Jodhpur, Rajasthan, India'
-        },
-        createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
-      },
-      {
-        _id: 'prod5',
-        name: 'Fresh Apples',
-        description: 'Crisp and juicy apples from hill stations',
-        category: 'fruits',
-        price: 80,
-        unit: 'kg',
-        availableQuantity: 200,
-        minimumOrderQuantity: 1,
-        quality: 'Premium',
-        harvestDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-        expiryDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(),
-        isActive: true,
-        sellerId: {
-          _id: 'farmer5',
-          name: 'Amit Gupta',
-          role: 'farmer',
-          location: {
-            village: 'Shimla Village',
-            district: 'Shimla',
-            state: 'Himachal Pradesh'
-          },
-          address: 'Village Shimla, Shimla, Himachal Pradesh, India'
-        },
-        createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()
-      },
-      {
-        _id: 'prod6',
-        name: 'Cotton',
-        description: 'High quality cotton for textile industry',
-        category: 'other',
-        price: 55,
-        unit: 'kg',
-        availableQuantity: 350,
-        minimumOrderQuantity: 20,
-        quality: 'Standard',
-        harvestDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-        expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        isActive: true,
-        sellerId: {
-          _id: 'farmer6',
-          name: 'Ramesh Jain',
-          role: 'farmer',
-          location: {
-            village: 'Surat Village',
-            district: 'Surat',
-            state: 'Gujarat'
-          },
-          address: 'Village Surat, Surat, Gujarat, India'
+          address: 'Connaught Place, New Delhi, Delhi, India'
         },
         createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      }
+    ];
+  }
+
+  // Generate mock products for development/fallback (farmer's own products)
+  generateMockProducts() {
+    return [
+      {
+        _id: 'mock_1',
+        sellerId: 'user_123',
+        name: 'Fresh Tomatoes',
+        description: 'Organic red tomatoes, freshly harvested from Punjab farms. Perfect for cooking and salads.',
+        category: 'vegetables',
+        price: 40,
+        unit: 'kg',
+        availableQuantity: 100,
+        minimumOrderQuantity: 5,
+        images: [],
+        location: {
+          district: 'Ludhiana',
+          state: 'Punjab'
+        },
+        isActive: true,
+        harvestDate: new Date('2025-09-20'),
+        expiryDate: new Date('2025-09-27'),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      {
+        _id: 'mock_2',
+        sellerId: 'user_123',
+        name: 'Basmati Rice',
+        description: 'Premium quality basmati rice with long grains and aromatic fragrance. Aged for perfect texture.',
+        category: 'grains',
+        price: 80,
+        unit: 'kg',
+        availableQuantity: 500,
+        minimumOrderQuantity: 10,
+        images: [],
+        location: {
+          district: 'Amritsar',
+          state: 'Punjab'
+        },
+        isActive: true,
+        harvestDate: new Date('2025-08-15'),
+        expiryDate: new Date('2026-08-15'),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      {
+        _id: 'mock_3',
+        sellerId: 'user_123',
+        name: 'Organic Spinach',
+        description: 'Fresh organic spinach leaves, grown without pesticides. Rich in iron and vitamins.',
+        category: 'vegetables',
+        price: 35,
+        unit: 'kg',
+        availableQuantity: 50,
+        minimumOrderQuantity: 2,
+        images: [],
+        location: {
+          district: 'Chandigarh',
+          state: 'Punjab'
+        },
+        isActive: true,
+        harvestDate: new Date('2025-09-25'),
+        expiryDate: new Date('2025-10-02'),
+        createdAt: new Date(),
+        updatedAt: new Date()
       }
     ];
   }
