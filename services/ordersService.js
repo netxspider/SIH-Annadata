@@ -60,6 +60,35 @@ class OrdersService {
         }
     }
 
+    // Update order status (for farmers/sellers)
+    static async updateOrderStatus(orderId, newStatus) {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+            
+            if (token) {
+                headers.Authorization = `Bearer ${token}`;
+            }
+
+            const endpoint = `/orders/${orderId}/status`;
+
+            console.log('Updating order status:', orderId, 'to', newStatus);
+
+            const response = await apiRequest(endpoint, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({ status: newStatus }),
+            });
+
+            return response;
+        } catch (error) {
+            console.error('Error updating order status:', error);
+            throw new Error('Failed to update order status. Please check your connection.');
+        }
+    }
+
     // Calculate active orders (pending + confirmed + in_transit)
     static calculateActiveOrders(orders) {
         if (!orders || !Array.isArray(orders)) return 0;
@@ -233,6 +262,7 @@ export default OrdersService;
 // Helper functions for easy import
 export const getUserOrders = OrdersService.getUserOrders.bind(OrdersService);
 export const getOrderStats = OrdersService.getOrderStats.bind(OrdersService);
+export const updateOrderStatus = OrdersService.updateOrderStatus.bind(OrdersService);
 export const calculateActiveOrders = OrdersService.calculateActiveOrders.bind(OrdersService);
 export const calculateTotalRevenue = OrdersService.calculateTotalRevenue.bind(OrdersService);
 export const formatCurrency = OrdersService.formatCurrency.bind(OrdersService);

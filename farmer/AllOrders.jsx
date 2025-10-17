@@ -105,7 +105,9 @@ const OrderCard = ({ order, onPress }) => {
   )
 }
 
-const OrderDetailModal = ({ visible, order, onClose }) => {
+const OrderDetailModal = ({ visible, order, onClose, onStatusUpdate }) => {
+  const [updating, setUpdating] = useState(false);
+
   if (!order) return null;
 
   const formatDate = (dateString) => {
@@ -128,6 +130,50 @@ const OrderDetailModal = ({ visible, order, onClose }) => {
       completed: index <= currentIndex,
       active: index === currentIndex
     }));
+  };
+
+  const handleStatusUpdate = async (newStatus) => {
+    Alert.alert(
+      'Update Order Status',
+      `Are you sure you want to change status to ${newStatus}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: async () => {
+            setUpdating(true);
+            try {
+              const success = await onStatusUpdate(order.id, newStatus);
+              if (success) {
+                Alert.alert('Success', 'Order status updated successfully');
+                onClose();
+              } else {
+                Alert.alert('Error', 'Failed to update order status');
+              }
+            } catch (error) {
+              Alert.alert('Error', 'Failed to update order status');
+            } finally {
+              setUpdating(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const getNextStatus = (currentStatus) => {
+    const statusFlow = {
+      'pending': 'confirmed',
+      'confirmed': 'processing',
+      'processing': 'shipped',
+      'shipped': 'delivered'
+    };
+    return statusFlow[currentStatus?.toLowerCase()];
+  };
+
+  const canUpdateStatus = (currentStatus) => {
+    const status = currentStatus?.toLowerCase();
+    return status !== 'delivered' && status !== 'cancelled';
   };
 
   const statusSteps = getStatusSteps(order.originalStatus || order.status);
@@ -236,6 +282,92 @@ const OrderDetailModal = ({ visible, order, onClose }) => {
                 ))}
               </View>
             </View>
+
+            {/* Status Update Actions */}
+            {canUpdateStatus(order.originalStatus || order.status) && (
+              <View style={styles.statusActionsSection}>
+                <Text style={styles.sectionTitle}>Update Status</Text>
+                <View style={styles.statusActionsContainer}>
+                  {order.originalStatus?.toLowerCase() === 'pending' && (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.statusActionButton, styles.confirmButton]}
+                        onPress={() => handleStatusUpdate('confirmed')}
+                        disabled={updating}
+                      >
+                        {updating ? (
+                          <ActivityIndicator size="small" color="white" />
+                        ) : (
+                          <>
+                            <Icon name="CheckCircle" size={20} color="white" />
+                            <Text style={styles.statusActionButtonText}>Confirm Order</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.statusActionButton, styles.rejectButton]}
+                        onPress={() => handleStatusUpdate('cancelled')}
+                        disabled={updating}
+                      >
+                        <Icon name="XCircle" size={20} color="white" />
+                        <Text style={styles.statusActionButtonText}>Reject Order</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  
+                  {order.originalStatus?.toLowerCase() === 'confirmed' && (
+                    <TouchableOpacity
+                      style={[styles.statusActionButton, styles.processingButton]}
+                      onPress={() => handleStatusUpdate('processing')}
+                      disabled={updating}
+                    >
+                      {updating ? (
+                        <ActivityIndicator size="small" color="white" />
+                      ) : (
+                        <>
+                          <Icon name="Loader" size={20} color="white" />
+                          <Text style={styles.statusActionButtonText}>Start Processing</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  
+                  {order.originalStatus?.toLowerCase() === 'processing' && (
+                    <TouchableOpacity
+                      style={[styles.statusActionButton, styles.shippedButton]}
+                      onPress={() => handleStatusUpdate('shipped')}
+                      disabled={updating}
+                    >
+                      {updating ? (
+                        <ActivityIndicator size="small" color="white" />
+                      ) : (
+                        <>
+                          <Icon name="Truck" size={20} color="white" />
+                          <Text style={styles.statusActionButtonText}>Mark as Shipped</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  
+                  {order.originalStatus?.toLowerCase() === 'shipped' && (
+                    <TouchableOpacity
+                      style={[styles.statusActionButton, styles.deliveredButton]}
+                      onPress={() => handleStatusUpdate('delivered')}
+                      disabled={updating}
+                    >
+                      {updating ? (
+                        <ActivityIndicator size="small" color="white" />
+                      ) : (
+                        <>
+                          <Icon name="Package" size={20} color="white" />
+                          <Text style={styles.statusActionButtonText}>Mark as Delivered</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
           </ScrollView>
         </View>
       </View>
@@ -409,6 +541,23 @@ const AllOrders = ({ navigation }) => {
     setShowDetailModal(true);
   };
 
+  // Handle status update
+  const handleStatusUpdate = async (orderId, newStatus) => {
+    try {
+      const response = await OrdersService.updateOrderStatus(orderId, newStatus);
+      
+      if (response.success) {
+        // Refresh orders list
+        await loadOrders();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      return false;
+    }
+  };
+
   // Handle sort toggle
   const handleSortToggle = () => {
     setSortOrder(current => current === 'asc' ? 'desc' : 'asc');
@@ -578,6 +727,7 @@ const AllOrders = ({ navigation }) => {
           setShowDetailModal(false);
           setSelectedOrder(null);
         }}
+        onStatusUpdate={handleStatusUpdate}
       />
     </View>
   );
@@ -1073,6 +1223,44 @@ const styles = StyleSheet.create({
   progressLabelActive: {
     color: '#2196F3',
     fontWeight: '600',
+  },
+
+  // Status Update Actions
+  statusActionsSection: {
+    marginBottom: 20,
+  },
+  statusActionsContainer: {
+    gap: 10,
+  },
+  statusActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  statusActionButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  confirmButton: {
+    backgroundColor: '#4CAF50',
+  },
+  rejectButton: {
+    backgroundColor: '#F44336',
+  },
+  processingButton: {
+    backgroundColor: '#9C27B0',
+  },
+  shippedButton: {
+    backgroundColor: '#3F51B5',
+  },
+  deliveredButton: {
+    backgroundColor: '#4CAF50',
   },
 })
 
