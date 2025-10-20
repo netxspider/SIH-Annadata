@@ -15,6 +15,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from '../Icon';
 import UserService from '../services/UserService';
 import PaymentService from '../services/PaymentService';
+import PaymentOptionsModal from '../components/PaymentOptionsModal';
+import LocationService from '../services/LocationService';
 
 const { width } = Dimensions.get('window');
 
@@ -70,8 +72,10 @@ const AddressModal = ({ visible, onClose, onSave, editingAddress }) => {
     city: '',
     state: '',
     pincode: '',
-    phone: ''
+    phone: '',
+    coordinates: null
   });
+  const [loadingLocation, setLoadingLocation] = useState(false);
 
   useEffect(() => {
     if (editingAddress) {
@@ -83,21 +87,63 @@ const AddressModal = ({ visible, onClose, onSave, editingAddress }) => {
         city: '',
         state: '',
         pincode: '',
-        phone: ''
+        phone: '',
+        coordinates: null
       });
     }
   }, [editingAddress, visible]);
 
+  const handleUseCurrentLocation = async () => {
+    try {
+      setLoadingLocation(true);
+      
+      // Get current location
+      const location = await LocationService.getCurrentLocation();
+      
+      if (!location) {
+        Alert.alert('Error', 'Could not get your current location. Please check your location settings.');
+        return;
+      }
+
+      // Reverse geocode to get address
+      const addressInfo = await UserService.reverseGeocodeLocation(
+        location.latitude,
+        location.longitude
+      );
+
+      // Pre-fill the form with location data
+      setAddressData({
+        ...addressData,
+        street: addressInfo.street || 'Current Location',
+        city: addressInfo.city || '',
+        state: addressInfo.state || '',
+        pincode: addressInfo.pincode || '',
+        coordinates: [location.longitude, location.latitude],
+        label: addressData.label || 'Current Location'
+      });
+
+      Alert.alert(
+        'Location Found',
+        'Your current location has been added. Please verify the details and add a label.'
+      );
+    } catch (error) {
+      console.error('Error getting current location:', error);
+      Alert.alert('Error', 'Failed to get current location. Please try again.');
+    } finally {
+      setLoadingLocation(false);
+    }
+  };
+
   const handleSave = () => {
     // Validate
     if (!addressData.label || !addressData.street || !addressData.city || 
-        !addressData.state || !addressData.pincode || !addressData.phone) {
-      Alert.alert('Error', 'Please fill all fields');
+        !addressData.state || !addressData.phone) {
+      Alert.alert('Error', 'Please fill all required fields (label, street, city, state, phone)');
       return;
     }
 
-    if (addressData.pincode.length !== 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit pincode');
+    if (addressData.pincode && addressData.pincode.length !== 6) {
+      Alert.alert('Error', 'Please enter a valid 6-digit pincode or leave it empty');
       return;
     }
 
@@ -128,8 +174,26 @@ const AddressModal = ({ visible, onClose, onSave, editingAddress }) => {
           </View>
 
           <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            {/* Use Current Location Button */}
+            {!editingAddress && (
+              <TouchableOpacity
+                style={styles.currentLocationButton}
+                onPress={handleUseCurrentLocation}
+                disabled={loadingLocation}
+              >
+                {loadingLocation ? (
+                  <ActivityIndicator color="#4CAF50" />
+                ) : (
+                  <>
+                    <Icon name="MapPin" size={20} color="#4CAF50" />
+                    <Text style={styles.currentLocationText}>Use Current Location</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Address Label (e.g., Home, Office)</Text>
+              <Text style={styles.inputLabel}>Address Label (e.g., Home, Office) *</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Home"
@@ -139,7 +203,7 @@ const AddressModal = ({ visible, onClose, onSave, editingAddress }) => {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Street Address</Text>
+              <Text style={styles.inputLabel}>Street Address *</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
                 placeholder="House/Flat No., Building Name, Street"
@@ -152,7 +216,7 @@ const AddressModal = ({ visible, onClose, onSave, editingAddress }) => {
 
             <View style={styles.inputRow}>
               <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
-                <Text style={styles.inputLabel}>City</Text>
+                <Text style={styles.inputLabel}>City *</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="City"
@@ -162,7 +226,7 @@ const AddressModal = ({ visible, onClose, onSave, editingAddress }) => {
               </View>
 
               <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>State</Text>
+                <Text style={styles.inputLabel}>State *</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="State"
@@ -186,7 +250,7 @@ const AddressModal = ({ visible, onClose, onSave, editingAddress }) => {
               </View>
 
               <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>Phone</Text>
+                <Text style={styles.inputLabel}>Phone *</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="9876543210"
@@ -197,6 +261,15 @@ const AddressModal = ({ visible, onClose, onSave, editingAddress }) => {
                 />
               </View>
             </View>
+
+            {addressData.coordinates && (
+              <View style={styles.coordinatesInfo}>
+                <Icon name="MapPin" size={16} color="#4CAF50" />
+                <Text style={styles.coordinatesText}>
+                  Location saved: {addressData.coordinates[1].toFixed(6)}, {addressData.coordinates[0].toFixed(6)}
+                </Text>
+              </View>
+            )}
           </ScrollView>
 
           <View style={styles.modalFooter}>
@@ -230,6 +303,7 @@ const VCart = () => {
   const [selectedAddress, setSelectedAddress] = useState(null);
   const [showAddressDropdown, setShowAddressDropdown] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [editingAddress, setEditingAddress] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
@@ -245,7 +319,33 @@ const VCart = () => {
       const response = await UserService.getUserProfile();
       
       if (response.success && response.data) {
-        const userAddresses = response.data.addresses || [];
+        let userAddresses = response.data.addresses || [];
+        
+        // Migrate old address format to new array format
+        if (response.data.address && typeof response.data.address === 'string' && userAddresses.length === 0) {
+          // Convert old string address to new format
+          const oldAddress = response.data.address;
+          const parts = oldAddress.split(', ');
+          
+          const migratedAddress = {
+            id: 'migrated_' + Date.now(),
+            label: 'Home',
+            street: parts[0] || oldAddress,
+            city: parts[1] || '',
+            state: parts[2] || '',
+            pincode: '',
+            phone: response.data.phone?.replace(/^\+91\s*/, '') || '',
+            coordinates: response.data.location?.coordinates || null
+          };
+          
+          userAddresses = [migratedAddress];
+          
+          // Save migrated address to backend
+          await UserService.updateUserProfile({
+            addresses: userAddresses
+          });
+        }
+        
         setAddresses(userAddresses);
         
         // Set first address as default if available
@@ -414,8 +514,14 @@ const VCart = () => {
       return;
     }
 
+    // Show payment options modal
+    setShowPaymentModal(true);
+  };
+
+  const handlePaymentProceed = async (paymentMethod, upiApp) => {
     try {
       setLoading(true);
+      setShowPaymentModal(false);
 
       // Prepare payment data
       const paymentData = {
@@ -431,7 +537,9 @@ const VCart = () => {
         amount: calculateTotal(),
         subtotal: calculateSubtotal(),
         tax: calculateTax(),
-        deliveryFee: calculateDeliveryFee()
+        deliveryFee: calculateDeliveryFee(),
+        paymentMethod: paymentMethod,
+        upiApp: upiApp
       };
 
       console.log('Initiating payment with data:', paymentData);
@@ -605,8 +713,13 @@ const VCart = () => {
                         {selectedAddress.street}, {selectedAddress.city}
                       </Text>
                       <Text style={styles.addressDetails}>
-                        {selectedAddress.state} - {selectedAddress.pincode}
+                        {selectedAddress.state}{selectedAddress.pincode ? ` - ${selectedAddress.pincode}` : ''}
                       </Text>
+                      {selectedAddress.coordinates && (
+                        <Text style={styles.addressCoordinates}>
+                          📍 Location saved
+                        </Text>
+                      )}
                     </View>
                   </View>
                 ) : (
@@ -697,6 +810,15 @@ const VCart = () => {
         }}
         onSave={handleSaveAddress}
         editingAddress={editingAddress}
+      />
+
+      {/* Payment Options Modal */}
+      <PaymentOptionsModal
+        visible={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        onProceed={handlePaymentProceed}
+        amount={calculateTotal()}
+        merchantName="Annadata Marketplace"
       />
     </View>
   );
@@ -1097,6 +1219,38 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: 20,
+  },
+  currentLocationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E8F5E8',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    borderStyle: 'dashed',
+  },
+  currentLocationText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginLeft: 8,
+  },
+  coordinatesInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E8',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+  },
+  coordinatesText: {
+    fontSize: 12,
+    color: '#4CAF50',
+    marginLeft: 8,
+    flex: 1,
   },
   inputGroup: {
     marginBottom: 20,
