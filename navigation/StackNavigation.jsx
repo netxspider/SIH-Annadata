@@ -11,6 +11,7 @@ import CropListings from '../farmer/CropListings';
 import AllOrders from '../farmer/AllOrders';
 import vDashboard from '../vendor/VDashboard';
 import VNearbyConsumers from '../vendor/VNearbyConsumers';
+import VCart from '../vendor/VCart';
 import CProductDetail from '../consumer/CProductDetail';
 import CVendorMap from '../consumer/CVendorMap';
 import TermsAndConditions from '../pages/TermsAndConditions';
@@ -33,6 +34,7 @@ const WrappedCropListings = (props) => <ScreenWrapper><CropListings {...props} /
 const WrappedAllOrders = (props) => <ScreenWrapper><AllOrders {...props} /></ScreenWrapper>;
 const WrappedVDashboard = (props) => <ScreenWrapper><vDashboard {...props} /></ScreenWrapper>;
 const WrappedVNearbyConsumers = (props) => <ScreenWrapper><VNearbyConsumers {...props} /></ScreenWrapper>;
+const WrappedVCart = (props) => <ScreenWrapper><VCart {...props} /></ScreenWrapper>;
 const WrappedCProductDetail = (props) => <ScreenWrapper><CProductDetail {...props} /></ScreenWrapper>;
 const WrappedCVendorMap = (props) => <ScreenWrapper><CVendorMap {...props} /></ScreenWrapper>;
 
@@ -74,6 +76,7 @@ const StackNavigation = () => {
         {/* Vendors */}
         <Stack.Screen name="vDashboard" component={WrappedVDashboard} />
         <Stack.Screen name="VNearbyConsumers" component={WrappedVNearbyConsumers} />
+        <Stack.Screen name="VCart" component={WrappedVCart} />
 
         {/* Consumers */}
         <Stack.Screen name="CProductDetail" component={WrappedCProductDetail} />

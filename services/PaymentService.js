@@ -312,11 +312,33 @@ class PaymentService {
 
       console.log('📦 Creating order and updating inventory...');
 
+      // Prepare delivery address
+      let deliveryAddressString;
+      let deliveryCoordinates = null;
+      
+      if (typeof orderData.deliveryAddress === 'string') {
+        deliveryAddressString = orderData.deliveryAddress;
+      } else {
+        const addr = orderData.deliveryAddress;
+        deliveryAddressString = `${addr.street}, ${addr.city}, ${addr.state}${addr.pincode ? ' - ' + addr.pincode : ''}`;
+        
+        // Extract coordinates if available
+        if (addr.coordinates && Array.isArray(addr.coordinates) && addr.coordinates.length === 2) {
+          deliveryCoordinates = addr.coordinates;
+        }
+      }
+
       // Prepare order data for backend
       const orderPayload = {
         buyerId: user._id || user.id,
         items: orderData.items,
-        deliveryAddress: orderData.deliveryAddress,
+        deliveryAddress: {
+          street: deliveryAddressString,
+          city: orderData.deliveryAddress.city || '',
+          state: orderData.deliveryAddress.state || '',
+          pincode: orderData.deliveryAddress.pincode || '',
+          coordinates: deliveryCoordinates
+        },
         totalAmount: orderData.amount,
         subtotal: orderData.subtotal,
         tax: orderData.tax,

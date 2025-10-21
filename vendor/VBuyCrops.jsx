@@ -316,7 +316,11 @@ const VBuyCrops = () => {
       Alert.alert('Empty Cart', 'Please add items to cart before proceeding')
       return
     }
-    Alert.alert('Cart', `Going to cart with ${cartItemsCount} items`)
+    
+    // Get items that are in cart (cartQuantity > 0)
+    const itemsInCart = crops.filter(crop => crop.cartQuantity > 0)
+    
+    navigation.navigate('VCart', { cartItems: itemsInCart })
   }
 
   const getFilteredCrops = () => {

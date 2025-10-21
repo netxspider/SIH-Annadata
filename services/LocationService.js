@@ -237,23 +237,63 @@ class LocationService {
     }
   }
 
-  // Reverse geocode coordinates to address (placeholder)
+  // Reverse geocode coordinates to address using expo-location
   static async reverseGeocode(latitude, longitude) {
     try {
-      // This would typically use a reverse geocoding service
       console.log('LocationService: Reverse geocoding:', latitude, longitude)
       
-      // Mock reverse geocoding
+      // Use expo-location's reverse geocoding
+      const results = await Location.reverseGeocodeAsync({
+        latitude,
+        longitude
+      })
+      
+      if (results && results.length > 0) {
+        const location = results[0]
+        
+        // Build formatted address
+        const addressParts = []
+        if (location.name) addressParts.push(location.name)
+        if (location.street) addressParts.push(location.street)
+        if (location.streetNumber) addressParts.push(location.streetNumber)
+        
+        const formattedAddress = addressParts.join(', ') || `Location at ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+        
+        return {
+          street: location.street || location.name || formattedAddress,
+          city: location.city || location.subregion || '',
+          state: location.region || '',
+          country: location.country || 'India',
+          postalCode: location.postalCode || '',
+          district: location.district || '',
+          subregion: location.subregion || '',
+          formattedAddress: formattedAddress,
+          coordinates: [longitude, latitude] // GeoJSON format
+        }
+      }
+      
+      // Fallback if no results
       return {
-        address: `Address near ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
-        city: 'Delhi',
-        state: 'Delhi',
+        street: `Location at ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+        city: '',
+        state: '',
         country: 'India',
-        postalCode: '110001'
+        postalCode: '',
+        formattedAddress: `GPS: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+        coordinates: [longitude, latitude]
       }
     } catch (error) {
       console.error('LocationService: Reverse geocoding error:', error)
-      return null
+      // Return basic location info on error
+      return {
+        street: `Location at ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+        city: '',
+        state: '',
+        country: 'India',
+        postalCode: '',
+        formattedAddress: `GPS: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+        coordinates: [longitude, latitude]
+      }
     }
   }
 
