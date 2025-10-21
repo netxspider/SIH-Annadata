@@ -143,15 +143,19 @@ const OrderDetailModal = ({ visible, order, onClose, onStatusUpdate }) => {
           onPress: async () => {
             setUpdating(true);
             try {
+              console.log('Modal: Updating order status to:', newStatus);
               const success = await onStatusUpdate(order.id, newStatus);
+              console.log('Modal: Update result:', success);
+              
               if (success) {
                 Alert.alert('Success', 'Order status updated successfully');
                 onClose();
               } else {
-                Alert.alert('Error', 'Failed to update order status');
+                Alert.alert('Error', 'Failed to update order status. Please check console logs for details.');
               }
             } catch (error) {
-              Alert.alert('Error', 'Failed to update order status');
+              console.error('Modal: Error caught:', error);
+              Alert.alert('Error', `Failed to update order status: ${error.message || 'Unknown error'}`);
             } finally {
               setUpdating(false);
             }
@@ -544,16 +548,26 @@ const AllOrders = ({ navigation }) => {
   // Handle status update
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
+      console.log('=== Status Update Debug ===');
+      console.log('Order ID:', orderId);
+      console.log('New Status:', newStatus);
+      
       const response = await OrdersService.updateOrderStatus(orderId, newStatus);
+      
+      console.log('Status update response:', JSON.stringify(response, null, 2));
       
       if (response.success) {
         // Refresh orders list
         await loadOrders();
         return true;
       }
+      
+      console.error('Status update failed:', response);
       return false;
     } catch (error) {
       console.error('Error updating order status:', error);
+      console.error('Error details:', error.message);
+      console.error('Error response:', error.response);
       return false;
     }
   };

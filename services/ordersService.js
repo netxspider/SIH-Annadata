@@ -74,7 +74,11 @@ class OrdersService {
 
             const endpoint = `/orders/${orderId}/status`;
 
-            console.log('Updating order status:', orderId, 'to', newStatus);
+            console.log('=== Update Order Status API Call ===');
+            console.log('Endpoint:', endpoint);
+            console.log('Order ID:', orderId);
+            console.log('New Status:', newStatus);
+            console.log('Has Token:', !!token);
 
             const response = await apiRequest(endpoint, {
                 method: 'PATCH',
@@ -82,10 +86,19 @@ class OrdersService {
                 body: JSON.stringify({ status: newStatus }),
             });
 
+            console.log('API Response:', JSON.stringify(response, null, 2));
             return response;
         } catch (error) {
-            console.error('Error updating order status:', error);
-            throw new Error('Failed to update order status. Please check your connection.');
+            console.error('=== Error updating order status ===');
+            console.error('Error:', error);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            
+            if (error.response) {
+                console.error('Error response:', error.response);
+            }
+            
+            throw new Error(error.message || 'Failed to update order status. Please check your connection.');
         }
     }
 
