@@ -151,8 +151,11 @@ class OrdersService {
                 return '#FF9800'; // Orange
             case 'confirmed':
                 return '#2196F3'; // Blue
-            case 'in_transit':
+            case 'processing':
                 return '#9C27B0'; // Purple
+            case 'in_transit':
+            case 'shipped':
+                return '#3F51B5'; // Indigo
             case 'delivered':
                 return '#4CAF50'; // Green
             case 'cancelled':
@@ -169,8 +172,12 @@ class OrdersService {
                 return 'Pending';
             case 'confirmed':
                 return 'Confirmed';
+            case 'processing':
+                return 'Processing';
             case 'in_transit':
                 return 'In Transit';
+            case 'shipped':
+                return 'Shipped';
             case 'delivered':
                 return 'Delivered';
             case 'cancelled':
@@ -182,7 +189,7 @@ class OrdersService {
 
     // Check if order is active (for farmer dashboard)
     static isActiveOrder(order) {
-        const activeStatuses = ['pending', 'confirmed', 'in_transit'];
+        const activeStatuses = ['pending', 'confirmed', 'processing', 'in_transit', 'shipped'];
         return activeStatuses.includes(order.status?.toLowerCase());
     }
 

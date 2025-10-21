@@ -47,9 +47,18 @@ class PaymentService {
         'Content-Type': 'application/json',
       };
 
+      // Format delivery address as string if it's an object
+      let deliveryAddressString;
+      if (typeof orderData.deliveryAddress === 'string') {
+        deliveryAddressString = orderData.deliveryAddress;
+      } else if (orderData.deliveryAddress && typeof orderData.deliveryAddress === 'object') {
+        const addr = orderData.deliveryAddress;
+        deliveryAddressString = `${addr.street}, ${addr.city}, ${addr.state}${addr.pincode ? ' - ' + addr.pincode : ''}`;
+      }
+
       const requestBody = {
         items: orderData.items,
-        deliveryAddress: orderData.deliveryAddress,
+        deliveryAddress: deliveryAddressString,
         amount: orderData.amount,
         paymentMethod: 'razorpay'
       };
@@ -76,8 +85,8 @@ class PaymentService {
         throw new Error(response.message || 'Failed to create order');
       }
     } catch (error) {
-      console.error('Error creating order:', error);
-      console.error('Order data was:', orderData);
+      console.log('Error creating order:', error);
+      console.log('Order data was:', orderData);
       
       // For testing without backend, create mock order
       return {

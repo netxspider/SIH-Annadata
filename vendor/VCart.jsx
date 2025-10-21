@@ -564,8 +564,8 @@ const VCart = () => {
             {
               text: 'View Orders',
               onPress: () => {
-                // Navigate to orders page
-                navigation.navigate('Sell Crops', { activeTab: 'orders' });
+                // Navigate to My Orders tab
+                navigation.navigate('My Orders');
               }
             },
             {
