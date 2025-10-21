@@ -542,7 +542,13 @@ const VCart = () => {
         upiApp: upiApp
       };
 
-      console.log('Initiating payment with data:', paymentData);
+      console.log('=== Payment Data Debug ===');
+      console.log('Cart Items:', cartItems.length);
+      console.log('Mapped Items:', paymentData.items.length);
+      console.log('Items structure:', JSON.stringify(paymentData.items, null, 2));
+      console.log('Delivery Address:', paymentData.deliveryAddress);
+      console.log('Amount:', paymentData.amount);
+      console.log('========================');
 
       // Initiate Razorpay payment
       const paymentResult = await PaymentService.initiatePayment(paymentData);
@@ -1093,6 +1099,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     lineHeight: 20,
+  },
+  addressCoordinates: {
+    fontSize: 12,
+    color: '#4CAF50',
+    marginTop: 4,
   },
   placeholderText: {
     fontSize: 16,

@@ -36,22 +36,34 @@ class PaymentService {
         throw new Error('No authentication token found');
       }
 
+      // Validate items before sending
+      if (!orderData.items || !Array.isArray(orderData.items) || orderData.items.length === 0) {
+        console.error('Invalid items data:', orderData.items);
+        throw new Error('Cart items are required');
+      }
+
       const headers = {
         Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
       };
 
-      console.log('Creating order on backend...', orderData);
+      const requestBody = {
+        items: orderData.items,
+        deliveryAddress: orderData.deliveryAddress,
+        amount: orderData.amount,
+        paymentMethod: 'razorpay'
+      };
+
+      console.log('Creating order on backend...');
+      console.log('Request body:', JSON.stringify(requestBody, null, 2));
 
       const response = await apiRequest('/orders/create', {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          items: orderData.items,
-          deliveryAddress: orderData.deliveryAddress,
-          amount: orderData.amount,
-          paymentMethod: 'razorpay'
-        }),
+        body: JSON.stringify(requestBody),
       });
+
+      console.log('Create order response:', response);
 
       if (response.success && response.data) {
         return {
@@ -65,6 +77,7 @@ class PaymentService {
       }
     } catch (error) {
       console.error('Error creating order:', error);
+      console.error('Order data was:', orderData);
       
       // For testing without backend, create mock order
       return {
