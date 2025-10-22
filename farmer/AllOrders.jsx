@@ -379,6 +379,85 @@ const OrderDetailModal = ({ visible, order, onClose, onStatusUpdate }) => {
   );
 };
 
+const CancelOrderModal = ({ visible, order, onClose, onConfirm }) => {
+  const [reason, setReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+
+  const handleCancel = async () => {
+    if (!reason.trim()) {
+      Alert.alert('Required', 'Please provide a reason for cancellation');
+      return;
+    }
+
+    setCancelling(true);
+    await onConfirm(reason);
+    setCancelling(false);
+    setReason('');
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.cancelModalOverlay}>
+        <View style={styles.cancelModalContainer}>
+          <View style={styles.cancelModalHeader}>
+            <Text style={styles.cancelModalTitle}>Cancel Order</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Icon name="X" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.cancelModalBody}>
+            <Text style={styles.cancelModalOrderInfo}>
+              Order #{order?.id?.substring(0, 12) || 'N/A'}
+            </Text>
+            <Text style={styles.cancelModalWarning}>
+              Are you sure you want to cancel this order? This action cannot be undone and may affect your customer relationship.
+            </Text>
+
+            <Text style={styles.cancelInputLabel}>Reason for cancellation *</Text>
+            <TextInput
+              style={styles.cancelReasonInput}
+              placeholder="e.g., Out of stock, Unable to fulfill order..."
+              placeholderTextColor="#999"
+              value={reason}
+              onChangeText={setReason}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+          </View>
+
+          <View style={styles.cancelModalFooter}>
+            <TouchableOpacity
+              style={[styles.cancelModalButton, styles.cancelModalKeepButton]}
+              onPress={onClose}
+              disabled={cancelling}
+            >
+              <Text style={styles.cancelModalKeepButtonText}>Keep Order</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.cancelModalButton, styles.cancelModalConfirmButton]}
+              onPress={handleCancel}
+              disabled={cancelling}
+            >
+              {cancelling ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text style={styles.cancelModalConfirmButtonText}>Cancel Order</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 const FilterChip = ({ label, selected, onPress, icon }) => (
   <TouchableOpacity
     style={[styles.filterChip, selected && styles.filterChipSelected]}
@@ -407,6 +486,8 @@ const AllOrders = ({ navigation }) => {
   // Modal state
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [orderToCancel, setOrderToCancel] = useState(null);
 
   // Status filters
   const statusFilters = [
