@@ -8,7 +8,9 @@ import {
   Dimensions,
   Alert,
   RefreshControl,
-  ActivityIndicator
+  ActivityIndicator,
+  Modal,
+  TextInput
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from '../Icon';
@@ -45,7 +47,7 @@ const OrderStatusBadge = ({ status }) => {
   );
 };
 
-const OrderCard = ({ order, onPress }) => {
+const OrderCard = ({ order, onPress, onCancel }) => {
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-IN', { 
@@ -54,6 +56,8 @@ const OrderCard = ({ order, onPress }) => {
       year: 'numeric' 
     });
   };
+
+  const canCancel = ['pending', 'confirmed'].includes(order.status.toLowerCase());
 
   return (
     <TouchableOpacity style={styles.orderCard} onPress={() => onPress(order)}>
@@ -71,7 +75,9 @@ const OrderCard = ({ order, onPress }) => {
         </View>
         <View style={styles.farmerDetails}>
           <Text style={styles.farmerLabel}>Farmer</Text>
-          <Text style={styles.farmerName}>{order.sellerName || 'Unknown Farmer'}</Text>
+          <Text style={styles.farmerName}>
+            {order.sellerId?.name || order.sellerName || 'Unknown Farmer'}
+          </Text>
         </View>
       </View>
 
@@ -124,6 +130,16 @@ const OrderCard = ({ order, onPress }) => {
         <Text style={styles.viewDetailsText}>View Details</Text>
         <Icon name="ChevronRight" size={16} color="#4CAF50" />
       </TouchableOpacity>
+
+      {canCancel && (
+        <TouchableOpacity 
+          style={styles.cancelOrderButton} 
+          onPress={() => onCancel(order)}
+        >
+          <Icon name="XCircle" size={16} color="#F44336" />
+          <Text style={styles.cancelOrderText}>Cancel Order</Text>
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 };
@@ -143,6 +159,85 @@ const FilterTab = ({ title, count, isActive, onPress }) => (
     )}
   </TouchableOpacity>
 );
+
+const CancelOrderModal = ({ visible, order, onClose, onConfirm }) => {
+  const [reason, setReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+
+  const handleCancel = async () => {
+    if (!reason.trim()) {
+      Alert.alert('Required', 'Please provide a reason for cancellation');
+      return;
+    }
+
+    setCancelling(true);
+    await onConfirm(reason);
+    setCancelling(false);
+    setReason('');
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Cancel Order</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Icon name="X" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalBody}>
+            <Text style={styles.modalOrderInfo}>
+              Order #{order?._id?.slice(-8) || 'N/A'}
+            </Text>
+            <Text style={styles.modalWarning}>
+              Are you sure you want to cancel this order? This action cannot be undone.
+            </Text>
+
+            <Text style={styles.inputLabel}>Reason for cancellation *</Text>
+            <TextInput
+              style={styles.reasonInput}
+              placeholder="e.g., Found a better deal, Changed my mind..."
+              placeholderTextColor="#999"
+              value={reason}
+              onChangeText={setReason}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+          </View>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalCancelButton]}
+              onPress={onClose}
+              disabled={cancelling}
+            >
+              <Text style={styles.modalCancelButtonText}>Keep Order</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalConfirmButton]}
+              onPress={handleCancel}
+              disabled={cancelling}
+            >
+              {cancelling ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text style={styles.modalConfirmButtonText}>Cancel Order</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 const EmptyState = ({ status }) => (
   <View style={styles.emptyState}>
@@ -165,6 +260,8 @@ const VOrders = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [orderToCancel, setOrderToCancel] = useState(null);
 
   // Load orders when screen focuses
   useFocusEffect(
@@ -204,6 +301,30 @@ const VOrders = () => {
       `Order ID: ${order._id}\nTotal: ₹${order.totalAmount}\nStatus: ${order.status}`,
       [{ text: 'OK' }]
     );
+  };
+
+  const handleCancelPress = (order) => {
+    setOrderToCancel(order);
+    setCancelModalVisible(true);
+  };
+
+  const handleCancelOrder = async (reason) => {
+    try {
+      const result = await OrderService.cancelOrder(orderToCancel._id, reason);
+      
+      if (result.success) {
+        Alert.alert('Success', 'Order cancelled successfully');
+        setCancelModalVisible(false);
+        setOrderToCancel(null);
+        // Refresh orders list
+        await loadOrders();
+      } else {
+        Alert.alert('Error', result.message || 'Failed to cancel order');
+      }
+    } catch (error) {
+      console.error('Error cancelling order:', error);
+      Alert.alert('Error', 'Failed to cancel order. Please try again.');
+    }
   };
 
   // Filter orders based on active filter
@@ -291,13 +412,29 @@ const VOrders = () => {
         >
           {filteredOrders.length > 0 ? (
             filteredOrders.map((order) => (
-              <OrderCard key={order._id} order={order} onPress={handleOrderPress} />
+              <OrderCard 
+                key={order._id} 
+                order={order} 
+                onPress={handleOrderPress}
+                onCancel={handleCancelPress}
+              />
             ))
           ) : (
             <EmptyState status={activeFilter} />
           )}
         </ScrollView>
       )}
+
+      {/* Cancel Order Modal */}
+      <CancelOrderModal
+        visible={cancelModalVisible}
+        order={orderToCancel}
+        onClose={() => {
+          setCancelModalVisible(false);
+          setOrderToCancel(null);
+        }}
+        onConfirm={handleCancelOrder}
+      />
     </View>
   );
 };
@@ -569,6 +706,113 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#4CAF50',
     marginRight: 4,
+  },
+
+  // Cancel Order Button
+  cancelOrderButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 10,
+    backgroundColor: '#FFEBEE',
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  cancelOrderText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#F44336',
+    marginLeft: 6,
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: width * 0.9,
+    maxWidth: 400,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalOrderInfo: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  modalWarning: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  reasonInput: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: '#333',
+    minHeight: 100,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    padding: 16,
+    backgroundColor: '#F8F9FA',
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelButton: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  modalCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  modalConfirmButton: {
+    backgroundColor: '#F44336',
+  },
+  modalConfirmButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
   },
 
   // Empty State
