@@ -105,7 +105,7 @@ const OrderCard = ({ order, onPress }) => {
   )
 }
 
-const OrderDetailModal = ({ visible, order, onClose, onStatusUpdate }) => {
+const OrderDetailModal = ({ visible, order, onClose, onStatusUpdate, onCancelOrder }) => {
   const [updating, setUpdating] = useState(false);
 
   if (!order) return null;
@@ -178,6 +178,11 @@ const OrderDetailModal = ({ visible, order, onClose, onStatusUpdate }) => {
   const canUpdateStatus = (currentStatus) => {
     const status = currentStatus?.toLowerCase();
     return status !== 'delivered' && status !== 'cancelled';
+  };
+
+  const canCancelOrder = (currentStatus) => {
+    const status = currentStatus?.toLowerCase();
+    return status === 'pending' || status === 'confirmed' || status === 'processing';
   };
 
   const statusSteps = getStatusSteps(order.originalStatus || order.status);
@@ -370,6 +375,23 @@ const OrderDetailModal = ({ visible, order, onClose, onStatusUpdate }) => {
                     </TouchableOpacity>
                   )}
                 </View>
+              </View>
+            )}
+
+            {/* Cancel Order Button */}
+            {canCancelOrder(order.originalStatus || order.status) && (
+              <View style={styles.cancelOrderSection}>
+                <TouchableOpacity
+                  style={styles.cancelOrderButton}
+                  onPress={() => onCancelOrder(order)}
+                  disabled={updating}
+                >
+                  <Icon name="XCircle" size={20} color="#F44336" />
+                  <Text style={styles.cancelOrderButtonText}>Cancel Order</Text>
+                </TouchableOpacity>
+                <Text style={styles.cancelOrderHint}>
+                  You can cancel this order while it's in pending, confirmed, or processing status
+                </Text>
               </View>
             )}
           </ScrollView>
@@ -653,6 +675,39 @@ const AllOrders = ({ navigation }) => {
     }
   };
 
+  // Handle cancel order
+  const handleCancelOrder = (order) => {
+    const status = order.originalStatus?.toLowerCase();
+    if (status === 'pending' || status === 'confirmed' || status === 'processing') {
+      setOrderToCancel(order);
+      setShowDetailModal(false);
+      setShowCancelModal(true);
+    } else {
+      Alert.alert('Cannot Cancel', 'This order cannot be cancelled at its current status.');
+    }
+  };
+
+  // Confirm cancel order
+  const confirmCancelOrder = async (reason) => {
+    if (!orderToCancel) return;
+
+    try {
+      const response = await OrdersService.updateOrderStatus(orderToCancel.id, 'cancelled');
+      
+      if (response.success) {
+        Alert.alert('Success', 'Order has been cancelled successfully');
+        setShowCancelModal(false);
+        setOrderToCancel(null);
+        await loadOrders();
+      } else {
+        Alert.alert('Error', 'Failed to cancel order. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error cancelling order:', error);
+      Alert.alert('Error', 'Failed to cancel order. Please try again.');
+    }
+  };
+
   // Handle sort toggle
   const handleSortToggle = () => {
     setSortOrder(current => current === 'asc' ? 'desc' : 'asc');
@@ -823,6 +878,18 @@ const AllOrders = ({ navigation }) => {
           setSelectedOrder(null);
         }}
         onStatusUpdate={handleStatusUpdate}
+        onCancelOrder={handleCancelOrder}
+      />
+
+      {/* Cancel Order Modal */}
+      <CancelOrderModal
+        visible={showCancelModal}
+        order={orderToCancel}
+        onClose={() => {
+          setShowCancelModal(false);
+          setOrderToCancel(null);
+        }}
+        onConfirm={confirmCancelOrder}
       />
     </View>
   );
@@ -1356,6 +1423,129 @@ const styles = StyleSheet.create({
   },
   deliveredButton: {
     backgroundColor: '#4CAF50',
+  },
+
+  // Cancel Order Section
+  cancelOrderSection: {
+    marginTop: 20,
+    marginBottom: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  cancelOrderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: '#FFF',
+    borderWidth: 2,
+    borderColor: '#F44336',
+  },
+  cancelOrderButtonText: {
+    color: '#F44336',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  cancelOrderHint: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'center',
+    marginTop: 10,
+    lineHeight: 16,
+  },
+
+  // Cancel Modal Styles
+  cancelModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelModalContainer: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  cancelModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  cancelModalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+  },
+  cancelModalBody: {
+    padding: 20,
+  },
+  cancelModalOrderInfo: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  cancelModalWarning: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  cancelInputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  cancelReasonInput: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    color: '#333',
+    minHeight: 100,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+  },
+  cancelModalFooter: {
+    flexDirection: 'row',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+    gap: 10,
+  },
+  cancelModalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelModalKeepButton: {
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+  },
+  cancelModalKeepButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  cancelModalConfirmButton: {
+    backgroundColor: '#F44336',
+  },
+  cancelModalConfirmButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
   },
 })
 
