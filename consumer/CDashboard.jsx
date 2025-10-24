@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { 
   View, 
   Text, 
@@ -14,9 +14,11 @@ import {
   TextInput
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
+import { useFocusEffect } from '@react-navigation/native'
 import Icon from '../Icon'
 import UserService from '../services/UserService'
 import ProductService from '../services/ProductService'
+import CartService from '../services/CartService'
 
 const { width } = Dimensions.get('window')
 
@@ -287,16 +289,36 @@ const CDashboard = () => {
     }
   }
 
+  // Load cart count
+  const loadCartCount = async () => {
+    try {
+      const summary = await CartService.getCartSummary()
+      if (summary.success) {
+        setCartItemsCount(summary.totalItems)
+      }
+    } catch (error) {
+      console.error('Error loading cart count:', error)
+    }
+  }
+
   // Load data on mount
   useEffect(() => {
     loadConsumerData()
     loadProducts()
+    loadCartCount()
   }, [])
+
+  // Reload cart count when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadCartCount()
+    }, [])
+  )
 
   // Handle refresh
   const onRefresh = async () => {
     setRefreshing(true)
-    await Promise.all([loadConsumerData(), loadProducts()])
+    await Promise.all([loadConsumerData(), loadProducts(), loadCartCount()])
     setRefreshing(false)
   }
 
@@ -370,9 +392,36 @@ const CDashboard = () => {
     Alert.alert('Category', `Opening ${category.name} section...`)
   }
 
-  const handleAddToCart = (crop) => {
-    setCartItemsCount(prev => prev + 1)
-    Alert.alert('Added to Cart', `${crop.name} has been added to your cart!`)
+  const handleAddToCart = async (crop) => {
+    try {
+      // Find the full product data from allProducts
+      const product = allProducts.find(p => p.id === crop.id)
+      if (!product) {
+        Alert.alert('Error', 'Product not found')
+        return
+      }
+
+      const result = await CartService.addToCart(product, 1)
+      if (result.success) {
+        setCartItemsCount(prev => prev + 1)
+        Alert.alert(
+          'Added to Cart',
+          `${crop.name} has been added to your cart!`,
+          [
+            { text: 'Continue Shopping', style: 'cancel' },
+            { 
+              text: 'View Cart', 
+              onPress: () => navigation.navigate('CCart')
+            }
+          ]
+        )
+      } else {
+        Alert.alert('Error', 'Failed to add to cart')
+      }
+    } catch (error) {
+      console.error('Error adding to cart:', error)
+      Alert.alert('Error', 'Failed to add to cart')
+    }
   }
 
   const handleViewDetails = (crop) => {
@@ -392,7 +441,7 @@ const CDashboard = () => {
   }
 
   const handleCart = () => {
-    Alert.alert('Cart', `You have ${cartItemsCount} items in cart`)
+    navigation.navigate('CCart')
   }
 
   if (loading) {
