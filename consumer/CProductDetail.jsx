@@ -13,6 +13,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from '../Icon';
 import ProductService from '../services/ProductService';
+import CartService from '../services/CartService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -34,8 +35,8 @@ const CProductDetail = () => {
   const loadProductDetails = async () => {
     try {
       setLoading(true);
-      // Fetch all products and find the one we need
-      const response = await ProductService.getAllProducts();
+      // Fetch vendor products (consumers view vendor products, not farmer products)
+      const response = await ProductService.getVendorProducts();
       
       if (response.success && response.data) {
         const foundProduct = response.data.find(p => p._id === productId || p.id === productId);
@@ -55,27 +56,47 @@ const CProductDetail = () => {
     }
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!product) return;
     
-    Alert.alert(
-      'Added to Cart',
-      `${quantity} ${product.unit} of ${product.name} added to cart`,
-      [{ text: 'OK' }]
-    );
+    try {
+      const result = await CartService.addToCart(product, quantity);
+      if (result.success) {
+        Alert.alert(
+          'Added to Cart',
+          `${quantity} ${product.unit} of ${product.name} added to cart`,
+          [
+            { text: 'Continue Shopping', style: 'cancel' },
+            { 
+              text: 'View Cart', 
+              onPress: () => navigation.navigate('CCart')
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Error', 'Failed to add to cart');
+      }
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      Alert.alert('Error', 'Failed to add to cart');
+    }
   };
 
-  const handleBuyNow = () => {
+  const handleBuyNow = async () => {
     if (!product) return;
     
-    Alert.alert(
-      'Buy Now',
-      `Proceed to checkout for ${quantity} ${product.unit} of ${product.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Proceed', onPress: () => console.log('Proceed to checkout') }
-      ]
-    );
+    // Add to cart first, then navigate to cart
+    try {
+      const result = await CartService.addToCart(product, quantity);
+      if (result.success) {
+        navigation.navigate('CCart');
+      } else {
+        Alert.alert('Error', 'Failed to add to cart');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      Alert.alert('Error', 'Failed to process request');
+    }
   };
 
   const incrementQuantity = () => {
@@ -336,10 +357,11 @@ const CProductDetail = () => {
         </View>
 
         <TouchableOpacity 
-          style={styles.buyButton}
-          onPress={handleBuyNow}
+          style={styles.addToCartButton}
+          onPress={handleAddToCart}
         >
-          <Text style={styles.buyButtonText}>Buy Now</Text>
+          <Icon name="ShoppingCart" size={20} color="white" />
+          <Text style={styles.addToCartButtonText}>Add to Cart</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -619,6 +641,20 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   buyButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
+  },
+  addToCartButton: {
+    backgroundColor: '#4CAF50',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  addToCartButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: 'white',
