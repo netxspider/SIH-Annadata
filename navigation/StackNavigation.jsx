@@ -13,6 +13,7 @@ import vDashboard from '../vendor/VDashboard';
 import VNearbyConsumers from '../vendor/VNearbyConsumers';
 import VCart from '../vendor/VCart';
 import CProductDetail from '../consumer/CProductDetail';
+import CCart from '../consumer/CCart';
 import CVendorMap from '../consumer/CVendorMap';
 import TermsAndConditions from '../pages/TermsAndConditions';
 import PrivacyPolicy from '../pages/PrivacyPolicy';
@@ -36,6 +37,7 @@ const WrappedVDashboard = (props) => <ScreenWrapper><vDashboard {...props} /></S
 const WrappedVNearbyConsumers = (props) => <ScreenWrapper><VNearbyConsumers {...props} /></ScreenWrapper>;
 const WrappedVCart = (props) => <ScreenWrapper><VCart {...props} /></ScreenWrapper>;
 const WrappedCProductDetail = (props) => <ScreenWrapper><CProductDetail {...props} /></ScreenWrapper>;
+const WrappedCCart = (props) => <ScreenWrapper><CCart {...props} /></ScreenWrapper>;
 const WrappedCVendorMap = (props) => <ScreenWrapper><CVendorMap {...props} /></ScreenWrapper>;
 
 // Wrapped pages without ChatBot
@@ -80,6 +82,7 @@ const StackNavigation = () => {
 
         {/* Consumers */}
         <Stack.Screen name="CProductDetail" component={WrappedCProductDetail} />
+        <Stack.Screen name="CCart" component={WrappedCCart} />
         <Stack.Screen name="CVendorMap" component={WrappedCVendorMap} />
         </Stack.Navigator>
     </NavigationContainer>
