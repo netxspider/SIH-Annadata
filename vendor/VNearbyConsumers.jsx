@@ -22,7 +22,7 @@ const { width, height } = Dimensions.get('window')
 
 const VNearbyConsumers = () => {
   const navigation = useNavigation()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [vendorLocation, setVendorLocation] = useState(null)
   const [consumers, setConsumers] = useState([])
   const [selectedConsumer, setSelectedConsumer] = useState(null)
@@ -31,6 +31,8 @@ const VNearbyConsumers = () => {
   const [showRoutes, setShowRoutes] = useState(false)
   const [shortestPath, setShortestPath] = useState(null)
   const [totalDistance, setTotalDistance] = useState(0)
+  const [demoMode, setDemoMode] = useState(false)
+  const [movingConsumers, setMovingConsumers] = useState({})
 
   // Dijkstra's Algorithm Implementation
   const dijkstraAlgorithm = (graph, start, end) => {
@@ -236,98 +238,203 @@ const VNearbyConsumers = () => {
     }
   }
 
+  // Generate demo consumers with some moving
+  const generateDemoConsumers = (vendorLoc) => {
+    const demoData = [
+      {
+        id: 'consumer_0',
+        name: 'Raj Kumar',
+        address: 'Connaught Place, Delhi',
+        latitude: vendorLoc.latitude + 0.005,
+        longitude: vendorLoc.longitude + 0.003,
+        orderCount: 3,
+        totalValue: 5500,
+        phone: '+91 9876543210',
+        isMoving: false
+      },
+      {
+        id: 'consumer_1',
+        name: 'Priya Sharma',
+        address: 'Karol Bagh, Delhi',
+        latitude: vendorLoc.latitude - 0.004,
+        longitude: vendorLoc.longitude + 0.005,
+        orderCount: 2,
+        totalValue: 3200,
+        phone: '+91 9876543211',
+        isMoving: true,
+        moveSpeed: 0.0001
+      },
+      {
+        id: 'consumer_2',
+        name: 'Amit Patel',
+        address: 'Rohini, Delhi',
+        latitude: vendorLoc.latitude + 0.006,
+        longitude: vendorLoc.longitude - 0.004,
+        orderCount: 5,
+        totalValue: 8900,
+        phone: '+91 9876543212',
+        isMoving: true,
+        moveSpeed: 0.00008
+      },
+      {
+        id: 'consumer_3',
+        name: 'Sneha Gupta',
+        address: 'Janakpuri, Delhi',
+        latitude: vendorLoc.latitude - 0.003,
+        longitude: vendorLoc.longitude - 0.006,
+        orderCount: 1,
+        totalValue: 1500,
+        phone: '+91 9876543213',
+        isMoving: false
+      },
+      {
+        id: 'consumer_4',
+        name: 'Vikram Singh',
+        address: 'Dwarka, Delhi',
+        latitude: vendorLoc.latitude + 0.002,
+        longitude: vendorLoc.longitude + 0.007,
+        orderCount: 4,
+        totalValue: 6700,
+        phone: '+91 9876543214',
+        isMoving: true,
+        moveSpeed: 0.00012
+      }
+    ]
+
+    return demoData.map(consumer => ({
+      ...consumer,
+      distance: calculateDistance(vendorLoc, {
+        latitude: consumer.latitude,
+        longitude: consumer.longitude
+      })
+    }))
+  }
+
+  // Animate moving consumers
+  useEffect(() => {
+    if (!demoMode) return
+
+    const interval = setInterval(() => {
+      setConsumers(prevConsumers => 
+        prevConsumers.map(consumer => {
+          if (consumer.isMoving && vendorLocation) {
+            // Move consumer along a circular path
+            const angle = (Date.now() / 10000) * consumer.moveSpeed * 360
+            const radius = 0.004
+            const newLat = vendorLocation.latitude + radius * Math.sin(angle * Math.PI / 180)
+            const newLng = vendorLocation.longitude + radius * Math.cos(angle * Math.PI / 180)
+            
+            return {
+              ...consumer,
+              latitude: newLat,
+              longitude: newLng,
+              distance: calculateDistance(vendorLocation, {
+                latitude: newLat,
+                longitude: newLng
+              })
+            }
+          }
+          return consumer
+        })
+      )
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [demoMode, vendorLocation])
+
+  // Toggle demo mode
+  const toggleDemoMode = () => {
+    if (!demoMode && vendorLocation) {
+      const demoConsumers = generateDemoConsumers(vendorLocation)
+      setConsumers(demoConsumers)
+      
+      // Calculate optimal route
+      const optimalRoute = findOptimalRoute(vendorLocation, demoConsumers)
+      if (optimalRoute) {
+        setShortestPath(optimalRoute.path)
+        setTotalDistance(optimalRoute.totalDistance)
+        const routeCoords = pathToCoordinates(optimalRoute.path, vendorLocation, demoConsumers)
+        setRouteCoordinates(routeCoords)
+      }
+    } else {
+      setConsumers([])
+      setRouteCoordinates([])
+      setShortestPath(null)
+      setTotalDistance(0)
+    }
+    setDemoMode(!demoMode)
+  }
+
   // Load nearby consumers with active orders
   const loadNearbyConsumers = async () => {
     try {
       setLoading(true)
 
-      // Get vendor's current location
+      // Get vendor's current location first
       const currentLocation = await getCurrentLocation()
-      if (!currentLocation) {
-        // Use default location if permission denied
-        const defaultLocation = {
-          latitude: 28.6139,
-          longitude: 77.2090
-        }
-        setVendorLocation(defaultLocation)
-        setMapRegion({
-          ...defaultLocation,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01
-        })
-      } else {
-        setVendorLocation(currentLocation)
-        setMapRegion({
-          ...currentLocation,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01
-        })
+      const locationToUse = currentLocation || {
+        latitude: 28.6139,
+        longitude: 77.2090
       }
-
-      // Load consumers with active orders from vendor
-      const response = await VendorService.getNearbyConsumers(currentLocation)
       
-      if (response.success) {
-        const consumersData = response.data.map((consumer, index) => ({
-          id: `consumer_${consumer.id || index}`,
-          name: consumer.name || `Consumer ${index + 1}`,
-          address: consumer.address || 'Unknown Address',
-          latitude: consumer.latitude || (currentLocation?.latitude + (Math.random() - 0.5) * 0.01),
-          longitude: consumer.longitude || (currentLocation?.longitude + (Math.random() - 0.5) * 0.01),
-          orderCount: consumer.activeOrders || Math.floor(Math.random() * 5) + 1,
-          totalValue: consumer.orderValue || Math.floor(Math.random() * 10000) + 1000,
-          distance: consumer.distance || calculateDistance(currentLocation || { latitude: 28.6139, longitude: 77.2090 }, {
-            latitude: consumer.latitude || (currentLocation?.latitude + (Math.random() - 0.5) * 0.01),
-            longitude: consumer.longitude || (currentLocation?.longitude + (Math.random() - 0.5) * 0.01)
-          }),
-          phone: consumer.phone || '+91 9876543210'
-        }))
+      setVendorLocation(locationToUse)
+      setMapRegion({
+        ...locationToUse,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02
+      })
+      
+      setLoading(false)
 
-        setConsumers(consumersData)
-
-        // Calculate optimal route using Dijkstra's algorithm
-        if (currentLocation && consumersData.length > 0) {
-          const optimalRoute = findOptimalRoute(currentLocation, consumersData)
-          if (optimalRoute) {
-            setShortestPath(optimalRoute.path)
-            setTotalDistance(optimalRoute.totalDistance)
-            
-            const routeCoords = pathToCoordinates(optimalRoute.path, currentLocation, consumersData)
-            setRouteCoordinates(routeCoords)
-          }
-        }
-      } else {
-        // Mock data if API fails
-        const mockConsumers = Array.from({ length: 5 }, (_, index) => ({
-          id: `consumer_${index}`,
-          name: `Consumer ${index + 1}`,
-          address: `Address ${index + 1}, Delhi`,
-          latitude: (currentLocation?.latitude || 28.6139) + (Math.random() - 0.5) * 0.01,
-          longitude: (currentLocation?.longitude || 77.2090) + (Math.random() - 0.5) * 0.01,
-          orderCount: Math.floor(Math.random() * 5) + 1,
-          totalValue: Math.floor(Math.random() * 10000) + 1000,
-          distance: Math.random() * 5 + 0.5,
-          phone: '+91 9876543210'
-        }))
-
-        setConsumers(mockConsumers)
+      // Then load consumers in background
+      try {
+        const response = await VendorService.getNearbyConsumers(locationToUse)
         
-        // Calculate route for mock data
-        if (currentLocation && mockConsumers.length > 0) {
-          const optimalRoute = findOptimalRoute(currentLocation, mockConsumers)
+        if (response.success && response.data.length > 0) {
+          const consumersData = response.data.map((consumer, index) => ({
+            id: `consumer_${consumer.id || index}`,
+            name: consumer.name || `Consumer ${index + 1}`,
+            address: consumer.address || 'Unknown Address',
+            latitude: consumer.latitude || (locationToUse.latitude + (Math.random() - 0.5) * 0.01),
+            longitude: consumer.longitude || (locationToUse.longitude + (Math.random() - 0.5) * 0.01),
+            orderCount: consumer.activeOrders || Math.floor(Math.random() * 5) + 1,
+            totalValue: consumer.orderValue || Math.floor(Math.random() * 10000) + 1000,
+            distance: consumer.distance || calculateDistance(locationToUse, {
+              latitude: consumer.latitude || (locationToUse.latitude + (Math.random() - 0.5) * 0.01),
+              longitude: consumer.longitude || (locationToUse.longitude + (Math.random() - 0.5) * 0.01)
+            }),
+            phone: consumer.phone || '+91 9876543210',
+            isMoving: false
+          }))
+
+          setConsumers(consumersData)
+
+          // Calculate optimal route
+          const optimalRoute = findOptimalRoute(locationToUse, consumersData)
           if (optimalRoute) {
             setShortestPath(optimalRoute.path)
             setTotalDistance(optimalRoute.totalDistance)
-            
-            const routeCoords = pathToCoordinates(optimalRoute.path, currentLocation, mockConsumers)
+            const routeCoords = pathToCoordinates(optimalRoute.path, locationToUse, consumersData)
             setRouteCoordinates(routeCoords)
           }
         }
+      } catch (error) {
+        console.error('Error loading consumers from API:', error)
+        // Don't set consumers here, let user use demo mode
       }
     } catch (error) {
-      console.error('Error loading nearby consumers:', error)
-      Alert.alert('Error', 'Failed to load nearby consumers')
-    } finally {
+      console.error('Error in loadNearbyConsumers:', error)
+      // Set default location on error
+      const defaultLocation = {
+        latitude: 28.6139,
+        longitude: 77.2090
+      }
+      setVendorLocation(defaultLocation)
+      setMapRegion({
+        ...defaultLocation,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02
+      })
       setLoading(false)
     }
   }
@@ -367,7 +474,15 @@ const VNearbyConsumers = () => {
       onPress={() => handleConsumerSelect(consumer)}
     >
       <View style={styles.consumerInfo}>
-        <Text style={styles.consumerName}>{consumer.name}</Text>
+        <View style={styles.consumerNameRow}>
+          <Text style={styles.consumerName}>{consumer.name}</Text>
+          {consumer.isMoving && (
+            <View style={styles.movingBadge}>
+              <Icon name="Navigation" size={10} color="white" />
+              <Text style={styles.movingBadgeText}>Moving</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.consumerAddress}>{consumer.address}</Text>
         <View style={styles.consumerStats}>
           <View style={styles.statItem}>
@@ -407,11 +522,32 @@ const VNearbyConsumers = () => {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Nearby Consumers</Text>
-          <Text style={styles.headerSubtitle}>{consumers.length} consumers with active orders</Text>
+          <Text style={styles.headerSubtitle}>
+            {consumers.length} consumer{consumers.length !== 1 ? 's' : ''} {demoMode ? '(Demo)' : 'with active orders'}
+          </Text>
         </View>
         <TouchableOpacity style={styles.routeButton} onPress={toggleRoutes}>
           <Icon name={showRoutes ? "EyeOff" : "Eye"} size={20} color="white" />
         </TouchableOpacity>
+      </View>
+
+      {/* Demo Mode Toggle */}
+      <View style={styles.demoModeContainer}>
+        <TouchableOpacity 
+          style={[styles.demoButton, demoMode && styles.demoButtonActive]} 
+          onPress={toggleDemoMode}
+        >
+          <Icon name={demoMode ? "StopCircle" : "PlayCircle"} size={18} color={demoMode ? "#F44336" : "#4CAF50"} />
+          <Text style={[styles.demoButtonText, demoMode && styles.demoButtonTextActive]}>
+            {demoMode ? 'Stop Demo Mode' : 'Start Demo Mode'}
+          </Text>
+        </TouchableOpacity>
+        {demoMode && (
+          <View style={styles.demoIndicator}>
+            <View style={styles.demoIndicatorDot} />
+            <Text style={styles.demoIndicatorText}>Live Simulation</Text>
+          </View>
+        )}
       </View>
 
       {/* Map Section */}
@@ -447,14 +583,18 @@ const VNearbyConsumers = () => {
                   longitude: consumer.longitude
                 }}
                 title={consumer.name}
-                description={`${consumer.orderCount} active orders`}
+                description={`${consumer.orderCount} active orders${consumer.isMoving ? ' • Moving' : ''}`}
                 onPress={() => handleConsumerSelect(consumer)}
               >
                 <View style={[
                   styles.consumerMarker,
-                  selectedConsumer?.id === consumer.id && styles.selectedMarker
+                  selectedConsumer?.id === consumer.id && styles.selectedMarker,
+                  consumer.isMoving && styles.movingMarker
                 ]}>
                   <Icon name="User" size={16} color="white" />
+                  {consumer.isMoving && (
+                    <View style={styles.movingIndicator} />
+                  )}
                 </View>
               </Marker>
             ))}
@@ -556,6 +696,57 @@ const styles = StyleSheet.create({
     padding: 8,
   },
 
+  // Demo Mode Styles
+  demoModeContainer: {
+    backgroundColor: 'white',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  demoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  demoButtonActive: {
+    backgroundColor: '#FFEBEE',
+    borderColor: '#F44336',
+  },
+  demoButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginLeft: 8,
+  },
+  demoButtonTextActive: {
+    color: '#F44336',
+  },
+  demoIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  demoIndicatorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F44336',
+    marginRight: 6,
+  },
+  demoIndicatorText: {
+    fontSize: 12,
+    color: '#F44336',
+    fontWeight: '500',
+  },
+
   // Map Styles
   mapContainer: {
     height: height * 0.4,
@@ -577,10 +768,23 @@ const styles = StyleSheet.create({
     padding: 6,
     borderWidth: 2,
     borderColor: 'white',
+    position: 'relative',
   },
   selectedMarker: {
     backgroundColor: '#4CAF50',
     transform: [{ scale: 1.2 }],
+  },
+  movingMarker: {
+    backgroundColor: '#FF9800',
+  },
+  movingIndicator: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F44336',
   },
   routeInfoOverlay: {
     position: 'absolute',
@@ -654,11 +858,30 @@ const styles = StyleSheet.create({
   consumerInfo: {
     flex: 1,
   },
+  consumerNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   consumerName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginRight: 8,
+  },
+  movingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  movingBadgeText: {
+    fontSize: 9,
+    color: 'white',
+    fontWeight: '600',
+    marginLeft: 3,
   },
   consumerAddress: {
     fontSize: 14,
