@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native'
 import Icon from '../Icon'
 import VendorService from '../services/VendorService'
 import UserService from '../services/UserService'
+import OrderService from '../services/OrderService'
 
 const { width } = Dimensions.get('window')
 
@@ -88,6 +89,32 @@ const VDashboard = () => {
   const [error, setError] = useState(null);
   const [orders, setOrders] = useState([]);
   const [vendorName, setVendorName] = useState('Vendor');
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [sellingOrders, setSellingOrders] = useState([]);
+
+  // Load vendor's purchase orders from farmers (vendor as buyer)
+  const loadPurchaseOrders = async () => {
+    try {
+      const fetchedOrders = await OrderService.getMyOrders();
+      console.log('Loaded purchase orders:', fetchedOrders);
+      setPurchaseOrders(fetchedOrders || []);
+    } catch (error) {
+      console.error('Error loading purchase orders:', error);
+      setPurchaseOrders([]);
+    }
+  };
+
+  // Load vendor's selling orders to consumers (vendor as seller)
+  const loadSellingOrders = async () => {
+    try {
+      const fetchedOrders = await VendorService.getVendorOrders('selling');
+      console.log('Loaded selling orders:', fetchedOrders);
+      setSellingOrders(fetchedOrders || []);
+    } catch (error) {
+      console.error('Error loading selling orders:', error);
+      setSellingOrders([]);
+    }
+  };
 
   // Load user data (vendor name)
   const loadUserData = async () => {
@@ -110,57 +137,49 @@ const VDashboard = () => {
     }
   };
 
-  // Load vendor dashboard data
+  // Load vendor dashboard data (business stats from selling to consumers)
   const loadVendorData = async () => {
     try {
       setError(null);
-      const response = await VendorService.getVendorDashboardData();
       
-      if (response.success) {
-        const ordersData = response.data.orders || response.data || [];
-        // Ensure ordersData is an array
-        const ordersArray = Array.isArray(ordersData) ? ordersData : [];
-        setVendorData(ordersArray);
-        setOrders(ordersArray); // Store orders separately for My Orders section
-        
-        // Calculate metrics
-        const metrics = VendorService.calculateVendorMetrics(ordersArray);
-        
-        // Set stats for display
-        const stats = [
-          { 
-            title: 'Total Revenue', 
-            value: VendorService.formatCurrency(metrics.totalRevenue), 
-            change: metrics.revenueGrowth, 
-            icon: 'DollarSign', 
-            color: '#4CAF50' 
-          },
-          { 
-            title: 'Active Orders', 
-            value: metrics.activeOrders.toString(), 
-            change: metrics.activeOrdersGrowth, 
-            icon: 'ShoppingBag', 
-            color: '#FF9800' 
-          }
-        ];
-        
-        setVendorStats(stats);
-        
-        // Handle offline/mock indicators
-        if (response.isMock) {
-          setError('Using demo data - API unavailable');
+      // Load vendor's selling orders (orders where vendor is the seller to consumers)
+      const response = await VendorService.getVendorOrders('selling');
+      
+      // Ensure ordersData is an array
+      const ordersArray = Array.isArray(response) ? response : [];
+      setVendorData(ordersArray);
+      setSellingOrders(ordersArray);
+      
+      // Calculate metrics from selling orders
+      const metrics = VendorService.calculateVendorMetrics(ordersArray);
+      
+      // Set stats for display - showing sales to consumers
+      const stats = [
+        { 
+          title: 'Total Sales', 
+          value: VendorService.formatCurrency(metrics.totalRevenue), 
+          change: metrics.revenueGrowth, 
+          icon: 'DollarSign', 
+          color: '#4CAF50' 
+        },
+        { 
+          title: 'Active Sales', 
+          value: metrics.activeOrders.toString(), 
+          change: metrics.activeOrdersGrowth, 
+          icon: 'ShoppingBag', 
+          color: '#FF9800' 
         }
-      } else {
-        setError(response.error || 'Failed to load vendor data');
-      }
+      ];
+      
+      setVendorStats(stats);
     } catch (err) {
       console.error('Error loading vendor data:', err);
       setError(err.message || 'Failed to load data');
       
       // Set empty stats on error
       setVendorStats([
-        { title: 'Total Revenue', value: '₹0', change: 0, icon: 'DollarSign', color: '#4CAF50' },
-        { title: 'Active Orders', value: '0', change: 0, icon: 'ShoppingBag', color: '#FF9800' }
+        { title: 'Total Sales', value: '₹0', change: 0, icon: 'DollarSign', color: '#4CAF50' },
+        { title: 'Active Sales', value: '0', change: 0, icon: 'ShoppingBag', color: '#FF9800' }
       ]);
     } finally {
       setLoading(false);
@@ -170,7 +189,7 @@ const VDashboard = () => {
   // Handle refresh
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadUserData(), loadVendorData()]);
+    await Promise.all([loadUserData(), loadVendorData(), loadPurchaseOrders(), loadSellingOrders()]);
     setRefreshing(false);
   };
 
@@ -178,6 +197,8 @@ const VDashboard = () => {
   useEffect(() => {
     loadUserData();
     loadVendorData();
+    loadPurchaseOrders();
+    loadSellingOrders();
   }, []);
 
   const handleBuyFromFarmers = () => {
@@ -217,7 +238,7 @@ const VDashboard = () => {
   }
 
   const handleViewAllOrders = () => {
-    navigation.navigate('VSellCrops', { activeTab: 'orders' })
+    navigation.navigate('My Orders')
   }
 
   const handleOrderPress = (order) => {
@@ -234,6 +255,7 @@ const VDashboard = () => {
       pending: '#FF9800',
       confirmed: '#2196F3',
       processing: '#9C27B0',
+      shipped: '#3F51B5',
       in_transit: '#3F51B5',
       delivered: '#4CAF50',
       cancelled: '#F44336',
@@ -246,6 +268,7 @@ const VDashboard = () => {
       pending: 'Clock',
       confirmed: 'CheckCircle',
       processing: 'Loader',
+      shipped: 'Truck',
       in_transit: 'Truck',
       delivered: 'Package',
       cancelled: 'XCircle',
@@ -345,35 +368,10 @@ const VDashboard = () => {
         </View>
       </View>
 
-      {/* Quick Actions */}
-      <View style={styles.quickActionsSection}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.quickActionsGrid}>
-          <QuickActionButton
-            icon="Package"
-            title="Inventory"
-            color="#9C27B0"
-            onPress={handleInventory}
-          />
-          <QuickActionButton
-            icon="ChartBar"
-            title="Analytics"
-            color="#FF5722"
-            onPress={handleAnalytics}
-          />
-          <QuickActionButton
-            icon="User"
-            title="Profile"
-            color="#607D8B"
-            onPress={handleProfile}
-          />
-        </View>
-      </View>
-
-      {/* Recent Activity Section */}
+      {/* My Orders Section */}
       <View style={styles.ordersSection}>
         <View style={styles.ordersSectionHeader}>
-          <Text style={styles.sectionTitle}>My Orders</Text>
+          <Text style={styles.sectionTitle}>My Orders from Farmers</Text>
           <TouchableOpacity onPress={handleViewAllOrders}>
             <Text style={styles.viewAllText}>View All →</Text>
           </TouchableOpacity>
@@ -386,7 +384,7 @@ const VDashboard = () => {
               <Icon name="Clock" size={24} color="#FF9800" />
             </View>
             <Text style={styles.orderStatusCount}>
-              {Array.isArray(orders) ? orders.filter(order => order.status === 'pending').length : 0}
+              {Array.isArray(purchaseOrders) ? purchaseOrders.filter(order => order.status === 'pending').length : 0}
             </Text>
             <Text style={styles.orderStatusLabel}>Pending</Text>
           </View>
@@ -396,19 +394,19 @@ const VDashboard = () => {
               <Icon name="CheckCircle" size={24} color="#2196F3" />
             </View>
             <Text style={styles.orderStatusCount}>
-              {Array.isArray(orders) ? orders.filter(order => order.status === 'confirmed').length : 0}
+              {Array.isArray(purchaseOrders) ? purchaseOrders.filter(order => order.status === 'confirmed').length : 0}
             </Text>
             <Text style={styles.orderStatusLabel}>Confirmed</Text>
           </View>
 
           <View style={styles.orderStatusCard}>
             <View style={[styles.orderStatusIcon, { backgroundColor: '#F3E5F5' }]}>
-              <Icon name="Truck" size={24} color="#9C27B0" />
+              <Icon name="Loader" size={24} color="#9C27B0" />
             </View>
             <Text style={styles.orderStatusCount}>
-              {Array.isArray(orders) ? orders.filter(order => order.status === 'in_transit').length : 0}
+              {Array.isArray(purchaseOrders) ? purchaseOrders.filter(order => order.status === 'processing').length : 0}
             </Text>
-            <Text style={styles.orderStatusLabel}>In Transit</Text>
+            <Text style={styles.orderStatusLabel}>Processing</Text>
           </View>
 
           <View style={styles.orderStatusCard}>
@@ -416,7 +414,7 @@ const VDashboard = () => {
               <Icon name="Package" size={24} color="#4CAF50" />
             </View>
             <Text style={styles.orderStatusCount}>
-              {Array.isArray(orders) ? orders.filter(order => order.status === 'delivered').length : 0}
+              {Array.isArray(purchaseOrders) ? purchaseOrders.filter(order => order.status === 'delivered').length : 0}
             </Text>
             <Text style={styles.orderStatusLabel}>Delivered</Text>
           </View>
@@ -424,8 +422,8 @@ const VDashboard = () => {
 
         {/* Recent Orders List */}
         <View style={styles.recentOrdersList}>
-          {Array.isArray(orders) && orders.length > 0 ? (
-            orders.slice(0, 5).map((order, index) => (
+          {Array.isArray(purchaseOrders) && purchaseOrders.length > 0 ? (
+            purchaseOrders.slice(0, 5).map((order, index) => (
               <TouchableOpacity 
                 key={order._id || index} 
                 style={styles.orderItem}
@@ -447,7 +445,7 @@ const VDashboard = () => {
                       Order #{order._id?.slice(-6).toUpperCase() || 'N/A'}
                     </Text>
                     <Text style={styles.orderItemSubtitle}>
-                      {order.buyerId?.name || order.consumer?.name || 'Customer'}
+                      {order.sellerId?.name || order.farmer?.name || 'Farmer'}
                     </Text>
                     <Text style={styles.orderItemTime}>
                       {new Date(order.createdAt).toLocaleDateString('en-IN', {
@@ -480,7 +478,7 @@ const VDashboard = () => {
               <Icon name="ShoppingBag" size={48} color="#ccc" />
               <Text style={styles.noOrdersText}>No orders yet</Text>
               <Text style={styles.noOrdersSubtext}>
-                Orders from consumers will appear here
+                Your purchase orders from farmers will appear here
               </Text>
             </View>
           )}
