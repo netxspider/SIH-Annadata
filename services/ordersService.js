@@ -102,6 +102,46 @@ class OrdersService {
         }
     }
 
+    // Cancel order (for farmers/sellers)
+    static async cancelOrder(orderId, reason = '') {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+            
+            if (token) {
+                headers.Authorization = `Bearer ${token}`;
+            }
+
+            const endpoint = `/orders/${orderId}/cancel`;
+
+            console.log('=== Cancel Order API Call ===');
+            console.log('Endpoint:', endpoint);
+            console.log('Order ID:', orderId);
+            console.log('Reason:', reason);
+            console.log('Has Token:', !!token);
+
+            const response = await apiRequest(endpoint, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({ reason }),
+            });
+
+            console.log('Cancel API Response:', JSON.stringify(response, null, 2));
+            return response;
+        } catch (error) {
+            console.error('=== Error cancelling order ===');
+            console.error('Error:', error);
+            console.error('Error message:', error.message);
+            
+            return {
+                success: false,
+                message: error.message || 'Failed to cancel order. Please check your connection.'
+            };
+        }
+    }
+
     // Calculate active orders (pending + confirmed + in_transit)
     static calculateActiveOrders(orders) {
         if (!orders || !Array.isArray(orders)) return 0;
@@ -283,6 +323,7 @@ export default OrdersService;
 export const getUserOrders = OrdersService.getUserOrders.bind(OrdersService);
 export const getOrderStats = OrdersService.getOrderStats.bind(OrdersService);
 export const updateOrderStatus = OrdersService.updateOrderStatus.bind(OrdersService);
+export const cancelOrder = OrdersService.cancelOrder.bind(OrdersService);
 export const calculateActiveOrders = OrdersService.calculateActiveOrders.bind(OrdersService);
 export const calculateTotalRevenue = OrdersService.calculateTotalRevenue.bind(OrdersService);
 export const formatCurrency = OrdersService.formatCurrency.bind(OrdersService);
