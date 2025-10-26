@@ -226,7 +226,7 @@ const PaymentOptionsModal = ({ visible, onClose, onProceed, amount, merchantName
         {/* Bottom Section */}
         <View style={styles.footer}>
           <View style={styles.amountContainer}>
-            <Text style={styles.amountLabel}>₹{amount.toFixed(2)}</Text>
+            <Text style={styles.amountLabel}>₹{amount ? amount.toFixed(2) : '0.00'}</Text>
             <TouchableOpacity>
               <Text style={styles.viewDetails}>View Details</Text>
             </TouchableOpacity>
