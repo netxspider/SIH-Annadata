@@ -392,35 +392,32 @@ const CDashboard = () => {
     Alert.alert('Category', `Opening ${category.name} section...`)
   }
 
-  const handleAddToCart = async (crop) => {
+    const handleAddToCart = async (crop) => {
     try {
-      // Find the full product data from allProducts
-      const product = allProducts.find(p => p.id === crop.id)
-      if (!product) {
-        Alert.alert('Error', 'Product not found')
-        return
+      // Extract product details from crop
+      const product = {
+        _id: crop.id,
+        id: crop.id,
+        name: crop.name,
+        price: crop.price,
+        unit: crop.unit || 'kg',
+        image: crop.image,
+        availableQuantity: crop.quantity || 100,
+        minimumOrderQuantity: crop.minimumOrderQuantity || 1,
+        sellerId: {
+          _id: crop.vendorId,
+          name: crop.vendor
+        }
       }
 
       const result = await CartService.addToCart(product, 1)
       if (result.success) {
-        setCartItemsCount(prev => prev + 1)
-        Alert.alert(
-          'Added to Cart',
-          `${crop.name} has been added to your cart!`,
-          [
-            { text: 'Continue Shopping', style: 'cancel' },
-            { 
-              text: 'View Cart', 
-              onPress: () => navigation.navigate('CCart')
-            }
-          ]
-        )
-      } else {
-        Alert.alert('Error', 'Failed to add to cart')
+        // Update cart count without showing modal
+        await loadCartCount()
       }
     } catch (error) {
       console.error('Error adding to cart:', error)
-      Alert.alert('Error', 'Failed to add to cart')
+      Alert.alert('Error', 'Failed to add item to cart')
     }
   }
 
