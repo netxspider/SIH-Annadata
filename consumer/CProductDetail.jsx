@@ -62,17 +62,8 @@ const CProductDetail = () => {
     try {
       const result = await CartService.addToCart(product, quantity);
       if (result.success) {
-        Alert.alert(
-          'Added to Cart',
-          `${quantity} ${product.unit} of ${product.name} added to cart`,
-          [
-            { text: 'Continue Shopping', style: 'cancel' },
-            { 
-              text: 'View Cart', 
-              onPress: () => navigation.navigate('CCart')
-            }
-          ]
-        );
+        // Navigate to cart immediately without showing modal
+        navigation.navigate('CCart');
       } else {
         Alert.alert('Error', 'Failed to add to cart');
       }
