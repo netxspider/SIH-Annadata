@@ -187,20 +187,32 @@ const COrders = () => {
   const loadOrders = async () => {
     try {
       setLoading(true)
+      console.log('🔄 Loading orders...')
+      
       const fetchedOrders = await OrderService.getMyOrders()
+      console.log(`✅ Fetched ${fetchedOrders.length} orders from backend`)
+      
+      if (fetchedOrders.length > 0) {
+        console.log('First order raw data:', JSON.stringify(fetchedOrders[0], null, 2))
+      }
       
       // Format orders for display
       const formattedOrders = fetchedOrders.map(order => 
         OrderService.formatOrderForDisplay(order)
       )
       
+      if (formattedOrders.length > 0) {
+        console.log('First order formatted:', JSON.stringify(formattedOrders[0], null, 2))
+      }
+      
       setOrders(formattedOrders)
+      console.log(`📦 Set ${formattedOrders.length} orders in state`)
 
       // Load stats
       const stats = await OrderService.getOrderStats()
       setOrderStats(stats)
     } catch (error) {
-      console.error('Error loading orders:', error)
+      console.error('❌ Error loading orders:', error)
       Alert.alert('Error', 'Failed to load orders. Please try again.')
     } finally {
       setLoading(false)
