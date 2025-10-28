@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { 
   View, 
   Text, 
@@ -14,9 +14,10 @@ import {
   ActivityIndicator,
   RefreshControl
 } from 'react-native'
-import { useNavigation } from '@react-navigation/native'
+import { useNavigation, useFocusEffect } from '@react-navigation/native'
 import Icon from '../Icon'
 import ProductService from '../services/ProductService'
+import CartService from '../services/CartService'
 
 const { width } = Dimensions.get('window')
 
@@ -188,7 +189,15 @@ const CBuy = () => {
   // Load products on component mount
   useEffect(() => {
     loadProducts()
+    loadCartCount()
   }, [])
+
+  // Reload cart count when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadCartCount()
+    }, [])
+  )
 
   const loadProducts = async () => {
     try {
@@ -272,6 +281,15 @@ const CBuy = () => {
   const onRefresh = () => {
     setRefreshing(true)
     loadProducts()
+  }
+
+  const loadCartCount = async () => {
+    try {
+      const items = await CartService.getCartItems()
+      setCartItems(items)
+    } catch (error) {
+      console.error('Error loading cart count:', error)
+    }
   }
 
   // Sample vendor data (keeping as fallback)
@@ -409,13 +427,38 @@ const CBuy = () => {
     return `https://via.placeholder.com/150x120/${color}/FFFFFF?text=${product.name?.charAt(0) || 'P'}`
   }
 
-  const handleAddToCart = (product) => {
-    setCartItems(prev => [...prev, product])
-    Alert.alert('Added to Cart', `${product.name} has been added to your cart!`)
+  const handleAddToCart = async (product) => {
+    try {
+      // Prepare product data for cart
+      const productData = {
+        _id: product.id,
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        unit: product.unit || 'kg',
+        image: product.image,
+        availableQuantity: product.stock || 100,
+        minimumOrderQuantity: product.minOrder || 1,
+        sellerId: product.sellerId
+      }
+
+      const result = await CartService.addToCart(productData, 1)
+      if (result.success) {
+        // Update local cart count
+        setCartItems(result.cart)
+      }
+    } catch (error) {
+      console.error('Error adding to cart:', error)
+      Alert.alert('Error', 'Failed to add item to cart')
+    }
   }
 
   const handleViewDetails = (product) => {
     navigation.navigate('CProductDetail', { productId: product.id })
+  }
+
+  const handleCart = () => {
+    navigation.navigate('CCart')
   }
 
   const handleFindNearbyVendors = () => {
@@ -450,7 +493,7 @@ const CBuy = () => {
         
         <TouchableOpacity 
           style={styles.cartButton}
-          onPress={() => Alert.alert('Cart', `${cartItems.length} items in cart`)}
+          onPress={handleCart}
         >
           <Icon name="ShoppingCart" size={24} color="white" />
           {cartItems.length > 0 && (
@@ -527,9 +570,9 @@ const CBuy = () => {
       {showFilters && (
         <View style={styles.filtersContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll}>
-            {filters.map((filter, index) => (
+            {filters.map((filter) => (
               <FilterButton
-                key={index}
+                key={filter}
                 title={filter}
                 isActive={activeFilter === filter}
                 onPress={() => setActiveFilter(filter)}
@@ -538,9 +581,9 @@ const CBuy = () => {
           </ScrollView>
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortScroll}>
-            {sortOptions.map((sort, index) => (
+            {sortOptions.map((sort) => (
               <SortButton
-                key={index}
+                key={sort.key}
                 title={sort.title}
                 icon={sort.icon}
                 isActive={activeSort === sort.key}
@@ -606,7 +649,7 @@ const CBuy = () => {
                 <View style={styles.productsGrid}>
                   {sortedProducts.map((product) => (
                     <ProductCard
-                      key={product.id}
+                      key={product._id || product.id}
                       product={transformProduct(product)}
                       onAddToCart={handleAddToCart}
                       onViewDetails={handleViewDetails}
@@ -962,12 +1005,12 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   productsGrid: {
-    gap: 16,
   },
   productCard: {
     backgroundColor: 'white',
     borderRadius: 15,
     padding: 16,
+    marginBottom: 16,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -988,13 +1031,13 @@ const styles = StyleSheet.create({
     top: 8,
     left: 8,
     flexDirection: 'row',
-    gap: 6,
   },
   newBadge: {
     backgroundColor: '#4CAF50',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+    marginRight: 6,
   },
   discountBadge: {
     backgroundColor: '#F44336',
@@ -1069,7 +1112,6 @@ const styles = StyleSheet.create({
   productActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   addToCartButton: {
     backgroundColor: '#4CAF50',
@@ -1079,6 +1121,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 8,
     flex: 1,
+    marginRight: 8,
   },
   addToCartText: {
     fontSize: 12,
@@ -1090,6 +1133,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E3F2FD',
     borderRadius: 8,
     padding: 8,
+    marginRight: 8,
   },
   contactButton: {
     backgroundColor: '#E8F5E8',
