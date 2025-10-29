@@ -43,14 +43,20 @@ const CVendorMap = () => {
   const [locationPermission, setLocationPermission] = useState(false)
   const [vendorsWithLocations, setVendorsWithLocations] = useState([])
   const [trackingLocation, setTrackingLocation] = useState(false)
+  const [demoMode, setDemoMode] = useState(false)
+  const [demoVendors, setDemoVendors] = useState([])
+  const [liveVendors, setLiveVendors] = useState([])
+  const [wsConnected, setWsConnected] = useState(false)
   
   // Location tracking subscription
   const locationSubscription = useRef(null)
   const wsLocationSubscription = useRef(null)
   const wsVendorSubscription = useRef(null)
+  const wsConnectionSubscription = useRef(null)
+  const demoMovementInterval = useRef(null)
 
   useEffect(() => {
-    initializeServices()
+    initializeLocation()
     return () => {
       // Cleanup on unmount
       cleanupServices()
@@ -62,6 +68,89 @@ const CVendorMap = () => {
       loadVendorLocations()
     }
   }, [userLocation, vendors])
+
+  const initializeLocation = async () => {
+    try {
+      // Request location permission
+      const { status } = await Location.requestForegroundPermissionsAsync()
+      
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Denied',
+          'Location permission is required to show your current location on the map.',
+          [{ text: 'OK' }]
+        )
+        setLocationPermission(false)
+        setLoading(false)
+        // Still show map with default location
+        return
+      }
+
+      setLocationPermission(true)
+
+      // Get current location
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      })
+
+      const userCoords = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      }
+
+      setUserLocation(userCoords)
+      setInitialRegion(userCoords)
+      setLoading(false)
+
+      // Initialize WebSocket connection (optional, won't block if it fails)
+      initializeWebSocket()
+
+      console.log('Location initialized successfully')
+    } catch (error) {
+      console.error('Error initializing location:', error)
+      setLoading(false)
+      // Show map with default location even if location fails
+      setUserLocation({
+        latitude: 28.6139,
+        longitude: 77.2090,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      })
+    }
+  }
+
+  const initializeWebSocket = async () => {
+    try {
+      // Connect to WebSocket (non-blocking)
+      const connected = await WebSocketService.connect('consumer')
+      
+      if (connected) {
+        setWsConnected(true)
+
+        // Subscribe to WebSocket events
+        wsConnectionSubscription.current = WebSocketService.on('connected', () => {
+          console.log('WebSocket connected event')
+          setWsConnected(true)
+        })
+
+        wsLocationSubscription.current = WebSocketService.on('disconnected', () => {
+          console.log('WebSocket disconnected event')
+          setWsConnected(false)
+        })
+
+        wsVendorSubscription.current = WebSocketService.on('vendor_location_update', handleVendorLocationUpdate)
+
+        console.log('WebSocket services initialized')
+      } else {
+        console.log('WebSocket connection failed, continuing without real-time updates')
+      }
+    } catch (error) {
+      console.error('Error initializing WebSocket:', error)
+      // Continue without WebSocket - not critical
+    }
+  }
 
   const initializeServices = async () => {
     try {
@@ -128,10 +217,25 @@ const CVendorMap = () => {
 
   const cleanupServices = () => {
     // Stop location tracking
-    LocationTrackingService.stopTracking()
+    if (locationSubscription.current) {
+      locationSubscription.current.remove()
+      locationSubscription.current = null
+    }
 
-    // Unsubscribe from WebSocket
-    WebSocketService.unsubscribeFromNearbyVendors()
+    // Stop demo vendor movement
+    if (demoMovementInterval.current) {
+      clearInterval(demoMovementInterval.current)
+      demoMovementInterval.current = null
+    }
+
+    // Unsubscribe from WebSocket if connected
+    if (wsConnected) {
+      try {
+        WebSocketService.unsubscribeFromNearbyVendors()
+      } catch (error) {
+        console.log('Error unsubscribing from vendors:', error)
+      }
+    }
 
     // Remove event listeners
     if (wsLocationSubscription.current) {
@@ -140,9 +244,16 @@ const CVendorMap = () => {
     if (wsVendorSubscription.current) {
       wsVendorSubscription.current()
     }
+    if (wsConnectionSubscription.current) {
+      wsConnectionSubscription.current()
+    }
 
     // Disconnect WebSocket
-    WebSocketService.disconnect()
+    try {
+      WebSocketService.disconnect()
+    } catch (error) {
+      console.log('Error disconnecting WebSocket:', error)
+    }
   }
 
   const handleLocationUpdate = (data) => {
@@ -152,21 +263,51 @@ const CVendorMap = () => {
   const handleVendorLocationUpdate = (data) => {
     console.log('Vendor location update:', data)
     
-    // Update vendor location in real-time
+    // Update live vendor location in real-time
     if (data && data.userId && data.location) {
-      setVendorsWithLocations(prevVendors => {
-        return prevVendors.map(vendor => {
-          if (vendor._id === data.userId) {
-            const [longitude, latitude] = data.location.coordinates
-            return {
-              ...vendor,
-              latitude,
-              longitude,
-              lastUpdated: new Date(data.timestamp)
+      const [longitude, latitude] = data.location.coordinates
+      
+      setLiveVendors(prevVendors => {
+        const exists = prevVendors.find(v => v.id === data.userId)
+        
+        if (exists) {
+          // Update existing vendor location
+          return prevVendors.map(vendor => {
+            if (vendor.id === data.userId) {
+              return {
+                ...vendor,
+                coordinate: { latitude, longitude },
+                lastUpdated: new Date(data.timestamp),
+                isLive: true
+              }
             }
+            return vendor
+          })
+        } else {
+          // Add new live vendor
+          const newVendor = {
+            id: data.userId,
+            name: data.userName || 'Live Vendor',
+            coordinate: { latitude, longitude },
+            distance: userLocation ? `${calculateRealDistance(
+              userLocation.latitude,
+              userLocation.longitude,
+              latitude,
+              longitude
+            ).toFixed(1)} km` : 'Calculating...',
+            rating: 4.5,
+            reviews: 50,
+            image: `https://via.placeholder.com/80x80/4CAF50/FFFFFF?text=${(data.userName || 'V').charAt(0)}`,
+            verified: true,
+            organic: false,
+            totalProducts: 0,
+            responseTime: '< 2h',
+            successRate: 95,
+            isLive: true,
+            lastUpdated: new Date(data.timestamp)
           }
-          return vendor
-        })
+          return [...prevVendors, newVendor]
+        }
       })
 
       // Recalculate distances
@@ -174,6 +315,154 @@ const CVendorMap = () => {
         updateVendorDistances(userLocation)
       }
     }
+  }
+
+  // Toggle demo mode with 5 simulated vendors
+  const toggleDemoMode = () => {
+    if (!userLocation) {
+      Alert.alert('Location Required', 'Please enable location services first')
+      return
+    }
+
+    if (!demoMode) {
+      // Create 5 demo vendors around user location
+      const demos = generateDemoVendors(userLocation)
+      setDemoVendors(demos)
+      setDemoMode(true)
+      
+      // Start simulating vendor movement
+      startDemoVendorMovement()
+      
+      Alert.alert('Demo Mode', '5 demo vendors added. Watch some of them move!', [{ text: 'OK' }])
+    } else {
+      // Stop demo mode
+      setDemoVendors([])
+      setDemoMode(false)
+      
+      // Stop movement simulation
+      if (demoMovementInterval.current) {
+        clearInterval(demoMovementInterval.current)
+        demoMovementInterval.current = null
+      }
+      
+      Alert.alert('Demo Mode', 'Demo vendors removed', [{ text: 'OK' }])
+    }
+  }
+
+  // Generate 5 demo vendors near user location
+  const generateDemoVendors = (baseLocation) => {
+    const vendors = [
+      {
+        id: 'demo_1',
+        name: 'Green Valley Farms (Moving)',
+        isMoving: true,
+        speedKmH: 30,
+        color: '#4CAF50',
+        direction: 0 // Degrees
+      },
+      {
+        id: 'demo_2',
+        name: 'Organic Harvest (Stationary)',
+        isMoving: false,
+        color: '#FF9800'
+      },
+      {
+        id: 'demo_3',
+        name: 'Fresh Farm Direct (Moving)',
+        isMoving: true,
+        speedKmH: 20,
+        color: '#2196F3',
+        direction: 90
+      },
+      {
+        id: 'demo_4',
+        name: 'Natural Foods Co. (Stationary)',
+        isMoving: false,
+        color: '#9C27B0'
+      },
+      {
+        id: 'demo_5',
+        name: 'Farm Fresh Express (Moving)',
+        isMoving: true,
+        speedKmH: 25,
+        color: '#F44336',
+        direction: 180
+      }
+    ]
+
+    return vendors.map((vendor, index) => {
+      // Create vendors in a circle around user
+      const angle = (index * 72) * (Math.PI / 180) // 360/5 = 72 degrees apart
+      const distance = 0.02 // About 2km
+      
+      const latitude = baseLocation.latitude + (distance * Math.cos(angle))
+      const longitude = baseLocation.longitude + (distance * Math.sin(angle))
+
+      return {
+        ...vendor,
+        coordinate: { latitude, longitude },
+        startCoordinate: { latitude, longitude },
+        distance: `${calculateRealDistance(
+          baseLocation.latitude,
+          baseLocation.longitude,
+          latitude,
+          longitude
+        ).toFixed(1)} km`,
+        rating: 4.2 + (Math.random() * 0.6),
+        reviews: Math.floor(Math.random() * 100) + 20,
+        image: `https://via.placeholder.com/80x80/${vendor.color.substring(1)}/FFFFFF?text=${vendor.name.charAt(0)}`,
+        verified: true,
+        organic: index % 2 === 0,
+        totalProducts: Math.floor(Math.random() * 30) + 10,
+        responseTime: '< 2h',
+        successRate: 92 + Math.floor(Math.random() * 8),
+        isDemo: true
+      }
+    })
+  }
+
+  // Simulate vendor movement for demo
+  const startDemoVendorMovement = () => {
+    demoMovementInterval.current = setInterval(() => {
+      setDemoVendors(prevVendors => {
+        return prevVendors.map(vendor => {
+          if (!vendor.isMoving || !userLocation) return vendor
+
+          // Move vendor along a path
+          const speedInDegrees = (vendor.speedKmH / 111) / 3600 // Convert km/h to degrees per second
+          const moveDistance = speedInDegrees * 5 // Movement every 5 seconds
+
+          // Calculate new position based on direction
+          const radians = (vendor.direction || 0) * (Math.PI / 180)
+          const newLat = vendor.coordinate.latitude + (moveDistance * Math.cos(radians))
+          const newLon = vendor.coordinate.longitude + (moveDistance * Math.sin(radians))
+
+          // Change direction randomly every now and then
+          const newDirection = Math.random() > 0.9 ? 
+            (vendor.direction + (Math.random() * 90 - 45)) % 360 : 
+            vendor.direction
+
+          const newCoordinate = {
+            latitude: newLat,
+            longitude: newLon
+          }
+
+          const newDistance = calculateRealDistance(
+            userLocation.latitude,
+            userLocation.longitude,
+            newLat,
+            newLon
+          )
+
+          return {
+            ...vendor,
+            coordinate: newCoordinate,
+            direction: newDirection,
+            distance: `${newDistance.toFixed(1)} km`
+          }
+        })
+      })
+    }, 5000) // Update every 5 seconds
   }
 
   const requestLocationPermission = async () => {
@@ -517,7 +806,9 @@ const CVendorMap = () => {
         <View style={styles.headerTitle}>
           <Text style={styles.headerTitleText}>Nearby Vendors</Text>
           <Text style={styles.headerSubtitle}>
-            {vendorsWithLocations.length} vendors • {trackingLocation ? 'Live tracking' : 'Location off'}
+            {vendorsWithLocations.length + demoVendors.length + liveVendors.length} vendors
+            {liveVendors.length > 0 && ` • ${liveVendors.length} live`}
+            {demoMode && ` • Demo mode`}
           </Text>
         </View>
         
@@ -589,7 +880,7 @@ const CVendorMap = () => {
                 </>
               )}
 
-              {/* Vendor markers */}
+              {/* Vendor markers - Static vendors from params */}
               {vendorsWithLocations.map((vendor) => (
                 <Marker
                   key={vendor.id}
@@ -613,7 +904,74 @@ const CVendorMap = () => {
                   </View>
                 </Marker>
               ))}
+
+              {/* Demo vendors */}
+              {demoVendors.map((vendor) => (
+                <Marker
+                  key={vendor.id}
+                  coordinate={vendor.coordinate}
+                  onPress={() => handleMarkerPress(vendor)}
+                  title={vendor.name}
+                  description={vendor.isMoving ? `Moving • ${vendor.distance} away` : `Stationary • ${vendor.distance} away`}
+                >
+                  <View style={styles.markerContainer}>
+                    <View style={[
+                      styles.marker,
+                      { backgroundColor: vendor.color },
+                      selectedVendor?.id === vendor.id && styles.selectedMarker
+                    ]}>
+                      <Icon name={vendor.isMoving ? "Truck" : "Store"} size={20} color="white" />
+                    </View>
+                    {vendor.isMoving && (
+                      <View style={styles.movingIndicator}>
+                        <Icon name="Navigation" size={10} color="#2196F3" />
+                      </View>
+                    )}
+                  </View>
+                </Marker>
+              ))}
+
+              {/* Live vendors from WebSocket */}
+              {liveVendors.map((vendor) => (
+                <Marker
+                  key={vendor.id}
+                  coordinate={vendor.coordinate}
+                  onPress={() => handleMarkerPress(vendor)}
+                  title={vendor.name + ' (Live)'}
+                  description={`Live tracking • ${vendor.distance} away`}
+                >
+                  <View style={styles.markerContainer}>
+                    <View style={[
+                      styles.marker,
+                      styles.liveVendorMarker,
+                      selectedVendor?.id === vendor.id && styles.selectedMarker
+                    ]}>
+                      <Icon name="Radio" size={20} color="white" />
+                    </View>
+                    <View style={styles.livePulse} />
+                  </View>
+                </Marker>
+              ))}
             </MapView>
+
+            {/* Demo Mode Toggle Button */}
+            <View style={styles.demoToggleContainer}>
+              <TouchableOpacity 
+                style={[styles.demoToggleButton, demoMode && styles.demoToggleButtonActive]}
+                onPress={toggleDemoMode}
+              >
+                <Icon name={demoMode ? "ToggleRight" : "ToggleLeft"} size={20} color={demoMode ? "#4CAF50" : "#999"} />
+                <Text style={[styles.demoToggleText, demoMode && styles.demoToggleTextActive]}>
+                  Demo Mode {demoMode ? 'ON' : 'OFF'}
+                </Text>
+              </TouchableOpacity>
+              {wsConnected && (
+                <View style={styles.liveIndicator}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>Live</Text>
+                </View>
+              )}
+            </View>
 
             {/* Map controls */}
             <View style={styles.mapControls}>
@@ -934,6 +1292,26 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 2,
   },
+  movingIndicator: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 2,
+  },
+  liveVendorMarker: {
+    backgroundColor: '#FF5722',
+  },
+  livePulse: {
+    position: 'absolute',
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 2,
+    borderColor: '#FF5722',
+    opacity: 0.5,
+  },
   userMarker: {
     width: 20,
     height: 20,
@@ -989,6 +1367,69 @@ const styles = StyleSheet.create({
     color: '#666',
     marginLeft: 6,
     fontWeight: '600',
+  },
+
+  // Demo toggle
+  demoToggleContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  demoToggleButton: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  demoToggleButtonActive: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#4CAF50',
+  },
+  demoToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginLeft: 8,
+  },
+  demoToggleTextActive: {
+    color: '#4CAF50',
+  },
+  liveIndicator: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF5722',
+    marginRight: 6,
+  },
+  liveText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF5722',
   },
 
   // Vendor info card
