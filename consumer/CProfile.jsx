@@ -10,7 +10,8 @@ import {
   Alert,
   Share,
   Linking,
-  ActivityIndicator
+  ActivityIndicator,
+  Modal
 } from 'react-native'
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -79,6 +80,8 @@ const CProfile = () => {
     totalSpent: 0,
     savedAmount: 0
   })
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showNotificationModal, setShowNotificationModal] = useState(false)
 
   // Load user data when screen focuses
   useFocusEffect(
@@ -91,21 +94,43 @@ const CProfile = () => {
     try {
       setLoading(true)
       
-      // Fetch user profile
-      const userData = await UserService.getCurrentUser()
-      if (userData) {
+      // Fetch user profile from API
+      const response = await UserService.getUserProfile()
+      console.log('📱 User profile response:', response)
+      
+      if (response && response.data) {
+        const userData = response.data
+        console.log('✅ User data loaded:', {
+          name: userData.name,
+          email: userData.email,
+          phone: userData.phone,
+          hasAddress: !!userData.address || !!userData.addresses
+        })
+        
+        // Handle addresses - could be string or array
+        let addressText = 'No address added'
+        if (userData.addresses && Array.isArray(userData.addresses) && userData.addresses.length > 0) {
+          const defaultAddr = userData.addresses.find(addr => addr.isDefault) || userData.addresses[0]
+          addressText = defaultAddr.street || defaultAddr.fullAddress || 'Address available'
+        } else if (userData.address) {
+          addressText = userData.address
+        }
+        
         setUserProfile({
-          photo: UserService.getAvatarUrl(userData.name),
+          photo: UserService.getAvatarUrl(userData.name || 'User'),
           fullName: userData.name || 'User',
-          email: userData.email || '',
-          phone: userData.phone || '',
-          address: userData.address || 'No address added',
+          email: userData.email || 'No email provided',
+          phone: userData.phone || 'No phone number',
+          address: addressText,
           role: userData.role || 'consumer'
         })
       }
 
       // Fetch order stats
+      console.log('📊 Fetching order stats...')
       const orderStats = await OrderService.getOrderStats()
+      console.log('📊 Order stats:', orderStats)
+      
       if (orderStats) {
         setUserStats({
           totalOrders: orderStats.totalOrders || 0,
@@ -115,7 +140,7 @@ const CProfile = () => {
         })
       }
     } catch (error) {
-      console.error('Error loading user data:', error)
+      console.error('❌ Error loading user data:', error)
     } finally {
       setLoading(false)
     }
@@ -166,11 +191,11 @@ const CProfile = () => {
   }
 
   const handleNotificationSettings = () => {
-    navigation.navigate('NotificationSettings')
+    setShowNotificationModal(true)
   }
 
   const handlePaymentMethods = () => {
-    navigation.navigate('PaymentMethods')
+    setShowPaymentModal(true)
   }
 
   const handleAddresses = () => {
@@ -490,6 +515,113 @@ const CProfile = () => {
           Connecting farmers and consumers for a sustainable future
         </Text>
       </View>
+
+      {/* Payment Methods Modal */}
+      <Modal
+        visible={showPaymentModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowPaymentModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Payment Methods</Text>
+              <TouchableOpacity onPress={() => setShowPaymentModal(false)}>
+                <Icon name="X" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <View style={styles.paymentMethodItem}>
+                <Icon name="CreditCard" size={24} color="#4CAF50" />
+                <Text style={styles.paymentMethodText}>Razorpay</Text>
+                <View style={styles.defaultBadge}>
+                  <Text style={styles.defaultBadgeText}>Default</Text>
+                </View>
+              </View>
+              
+              <View style={styles.paymentMethodItem}>
+                <Icon name="DollarSign" size={24} color="#FF9800" />
+                <Text style={styles.paymentMethodText}>Cash on Delivery</Text>
+              </View>
+              
+              <Text style={styles.modalNote}>
+                All payments are securely processed through Razorpay. You can pay using UPI, Cards, Net Banking, or Wallets.
+              </Text>
+            </View>
+            
+            <TouchableOpacity 
+              style={styles.modalCloseButton}
+              onPress={() => setShowPaymentModal(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Notification Settings Modal */}
+      <Modal
+        visible={showNotificationModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowNotificationModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Notification Settings</Text>
+              <TouchableOpacity onPress={() => setShowNotificationModal(false)}>
+                <Icon name="X" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <View style={styles.notificationItem}>
+                <View style={styles.notificationInfo}>
+                  <Icon name="Package" size={20} color="#2196F3" />
+                  <Text style={styles.notificationText}>Order Updates</Text>
+                </View>
+                <View style={styles.enabledIndicator}>
+                  <Icon name="Check" size={16} color="#4CAF50" />
+                </View>
+              </View>
+              
+              <View style={styles.notificationItem}>
+                <View style={styles.notificationInfo}>
+                  <Icon name="Bell" size={20} color="#FF9800" />
+                  <Text style={styles.notificationText}>Promotional Offers</Text>
+                </View>
+                <View style={styles.enabledIndicator}>
+                  <Icon name="Check" size={16} color="#4CAF50" />
+                </View>
+              </View>
+              
+              <View style={styles.notificationItem}>
+                <View style={styles.notificationInfo}>
+                  <Icon name="MessageCircle" size={20} color="#9C27B0" />
+                  <Text style={styles.notificationText}>Messages</Text>
+                </View>
+                <View style={styles.enabledIndicator}>
+                  <Icon name="Check" size={16} color="#4CAF50" />
+                </View>
+              </View>
+              
+              <Text style={styles.modalNote}>
+                All notifications are currently enabled. You can manage detailed notification preferences from your device settings.
+              </Text>
+            </View>
+            
+            <TouchableOpacity 
+              style={styles.modalCloseButton}
+              onPress={() => setShowNotificationModal(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   )
 }
@@ -789,6 +921,120 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 30,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  modalBody: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+  },
+  modalNote: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 20,
+    lineHeight: 20,
+    backgroundColor: '#F8F9FA',
+    padding: 12,
+    borderRadius: 8,
+  },
+  modalCloseButton: {
+    backgroundColor: '#2196F3',
+    marginHorizontal: 20,
+    marginTop: 10,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalCloseButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // Payment Methods Modal
+  paymentMethodItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  paymentMethodText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+    marginLeft: 12,
+    flex: 1,
+  },
+  defaultBadge: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  defaultBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'white',
+  },
+
+  // Notification Settings Modal
+  notificationItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  notificationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  notificationText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+    marginLeft: 12,
+  },
+  enabledIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#E8F5E9',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 })
 
