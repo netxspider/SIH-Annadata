@@ -21,16 +21,23 @@ class OrderService {
   async getMyOrders(status = null) {
     try {
       const authHeader = await this.getAuthHeader();
+      console.log('🔑 Auth header:', authHeader ? 'Present' : 'Missing')
       
       let endpoint = `${API_CONFIG.ENDPOINTS.ORDERS}/my-orders`;
       if (status) {
         endpoint += `?status=${status}`;
       }
 
+      console.log('🌐 Fetching orders from:', endpoint)
       const response = await apiRequest(endpoint, {
         method: 'GET',
         headers: authHeader
       });
+
+      console.log('📡 Order API response:', {
+        success: response.success,
+        orderCount: response.data?.orders?.length || 0
+      })
 
       if (response.success && response.data) {
         return response.data.orders || [];
@@ -38,7 +45,7 @@ class OrderService {
 
       return [];
     } catch (error) {
-      console.error('Error fetching my orders:', error);
+      console.error('❌ Error fetching my orders:', error)
       return [];
     }
   }
